@@ -1,0 +1,262 @@
+# 30 Java interoperability
+
+So far, we have been talking about creating an app from scratch. However, you probably find yourself in a situation where you already have an App written in Java with thousands of lines of code, and you cannot convert all your code. I will cover this topic here.
+
+One of the great wonders of Kotlin is that it is entirely interoperable with Java. Therefore, although all your application code is written Java, you can create a class in Kotlin and use it from Java without any issues. Calling Kotlin from Java code cannot be easier. This potentially gives you two advantages:
+
+-   You can use Kotlin in a Java project: In any project, you have already started, you can decide to start writing new code in Kotlin. You can then call it from Java code.
+-   If you do not know how to do something in Kotlin, you can write that part in Java. You may be wondering if there is a case where Kotlin is not enough to do something on Android. In theory, everything can be done, but the fact is that it does not matter. If you cannot do it in Kotlin, then implement that part in Java.
+
+Let's see how this compatibility works, and how Kotlin code looks when used from Java.
+
+## 30.1 Package-level functions
+
+In Kotlin, functions do not need to be inside a class, but this is not the case in Java. How can we call a function then? Imagine that we have a file called `utils.kt` that looks like this:
+
+~~~~~~~~
+fun logD(message: String) {
+    Log.d("", message)
+}
+
+fun logE(message: String) {
+    Log.e("", message)
+}
+~~~~~~~~
+
+In Java we can access them through a class that will be called `UtilsKt`, with some static methods:
+
+{lang="java"}
+~~~~~~~~
+UtilsKt.logD("Debug");
+UtilsKt.logE("Error");
+~~~~~~~~
+
+## 30.2 Extension functions
+
+We have been using extension functions a lot throughout this book. However, how do they look in Java? If you have the following function:
+
+~~~~~~~~
+fun ViewGroup.inflate(resId: Int, attachToRoot: Boolean = false): View {
+    return LayoutInflater.from(context).inflate(resId, this, attachToRoot)
+}
+~~~~~~~~
+
+This is applied to a `ViewGroup`. It receives a layout and inflates it using the parent view. What would we get if we want to use it in Java? This is the result:
+
+{lang="java"}
+~~~~~~~~
+View v = UtilsKt.inflate(parent, R.layout.view_item, false);
+~~~~~~~~
+
+As you can see, the object that applies this function (the receiver) is added as an argument to the function. Besides, the optional argument becomes mandatory, because in Java we cannot use default values.
+
+## 30.3 Function overloads
+
+If you want to generate the corresponding overloads in Java, you can use `@JvmOverloads` annotation for that function. In the previous example, you would not need to specify `false` for the second argument in Java:
+
+~~~~~~~~
+@JvmOverloads
+fun ViewGroup.inflate(resId: Int, attachToRoot: Boolean = false): View {
+    return LayoutInflater.from(context).inflate(resId, this, attachToRoot)
+}
+
+View v = UtilsKt.inflate(parent, R.layout.view_item);
+~~~~~~~~
+
+If you prefer to specify the name of the class when calling Kotlin from Java, you can use an annotation to modify it. In the `utils.kt` file, add this above the `package` sentence:
+
+~~~~~~~~
+@file:JvmName("AndroidUtils")
+~~~~~~~~
+
+And now the class in Java will be named:
+
+{lang="java"}
+~~~~~~~~
+AndroidUtils.logD("Debug");
+AndroidUtils.logE("Error");
+View v = AndroidUtils.inflate(parent, R.layout.view_item, false);
+~~~~~~~~
+
+## 30.4 Instance and static fields
+
+In Java, we use fields to store the state. They can be instance fields, which means that each object can store a different value, or static (all instances of a class share them). If we try to find an equivalent of this in Kotlin, it would be properties and companion objects. If we have a class like this:
+
+~~~~~~~~
+class App : Application() {
+
+    val appHelper = AppHelper()
+
+    companion object {
+        lateinit var instance: App
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
+}
+~~~~~~~~
+
+How does this work in Java? You can simply access the companion object properties as static fields, by using `getters` and `setters`:
+
+{lang="java"}
+~~~~~~~~
+AppHelper helper = App.instance.getAppHelper();
+~~~~~~~~
+
+As a `val`, it only generates the `getter` in Java. If it were `var`, we would also have a `setter`. The access to `instance` has worked automatically because it uses the `lateinit` annotation, which also exposes the field that Kotlin uses to store the state. But imagine we create a constant:
+
+~~~~~~~~
+companion object {
+    lateinit var instance: App
+    val CONSTANT = 27
+}
+~~~~~~~~
+
+You find that you cannot use it directly. You are forced to access through a `Companion` internal class:
+
+{lang="java"}
+~~~~~~~~
+KotlinClass.Companion.getCONSTANT()
+~~~~~~~~
+
+This previous snippet does not look particularly readable. To expose the field in Java the same way a static field would look, you need a new annotation:
+
+~~~~~~~~
+@JvmField val CONSTANT = 27
+~~~~~~~~
+
+And now you can use it from Java code:
+
+{lang="java"}
+~~~~~~~~
+int c = App.CONSTANT;
+~~~~~~~~
+
+If you have functions in a companion object, they are converted to static methods using the `@JvmStatic` annotation. There are several ways to define constants that, when we use Kotlin from Java, generate different bytecode. If you remember, we used `const val` before, and those properties are accessible without using a `getter`.
+
+## 30.5 Data classes
+
+Some features are clear, but some others are more difficult to know how they may behave in Java. So let's take a look at those features that Kotlin has, but Java does not. One example is *data classes*. Let's say we have a data class like this:
+
+~~~~~~~~
+data class MediaItem(val id: Int, val title: String, val url: String)
+~~~~~~~~
+
+We can create instances of this class:
+
+{lang="java"}
+~~~~~~~~
+MediaItem mediaItem = new MediaItem(1, "Title", "https://antonioleiva.com");
+~~~~~~~~
+
+But are we missing something? First, let's check if `equals` works as expected:
+
+{lang="java"}
+~~~~~~~~
+MediaItem mediaItem = new MediaItem(1, "Title", "https://antonioleiva.com");
+MediaItem mediaItem2 = new MediaItem(1, "Title", "https://antonioleiva.com");
+
+if (mediaItem.equals(mediaItem2)) {
+    Toast.makeText(this, "Items are equals", Toast.LENGTH_SHORT).show();
+}
+~~~~~~~~
+
+Of course, it shows the `Toast`. The bytecode the class generates has everything it needs to compare two items and, if the state is the same, then the items are also the same. However, other things are more difficult to replicate. Remember the `copy` feature data classes have? The method is there, but you can only use it passing all arguments:
+
+{lang="java"}
+~~~~~~~~
+mediaItem.copy(1, "Title2", "http://google.com");
+~~~~~~~~
+
+So it is not better than just using the constructor. Also, we lose destructuring, as the Java language does not have a way to express that.
+
+## 30.6 Sealed classes
+
+Another feature that may come to your mind is *sealed classes*. How do they work when used from Java? Let's try it:
+
+~~~~~~~~
+sealed class Filter {
+    object None : Filter()
+    data class ByType(val type: Type) : Filter()
+    data class ByFormat(val format: Format) : Filter()
+}
+~~~~~~~~
+
+We have a `Filter` class that represents a filter that can be applied to items. Of course, in Java we cannot do:
+
+{lang="java"}
+~~~~~~~~
+public void filter(Filter filter) {
+    switch (filter) {
+        ...
+    }
+}
+~~~~~~~~
+
+`switch` in Java only accepts a small number of types, and for Java, sealed classes are regular classes. So the best you can do is:
+
+{lang="java"}
+~~~~~~~~
+if (filter instanceof Filter.None) {
+    Log.d(TAG, "Nothing to filter");
+} else if (filter instanceof Filter.ByType) {
+    Filter.ByType type = (Filter.ByType) filter;
+    Log.d(TAG, "Type is: " + type.getType().toString());
+} else if (filter instanceof Filter.ByFormat) {
+    Filter.ByFormat format = ((Filter.ByFormat) filter);
+    Log.d(TAG, "Format is: " + format.getFormat());
+}
+~~~~~~~~
+
+We cannot make use of any of the extra features from Java.
+
+## 30.7 Inline functions and reified types
+
+As you may remember, in Kotlin you can make generic functions use reified types. That way, you can use the generic type inside the function. 
+
+When we saw them, I mentioned that they need to use the reserved word `inline`, which is used to substitute the calls to the function by the body of the function when compiling. Can we use that from Java? 
+
+Let's start with the `inline` functions, which are easier to test. If we have a `toast` function that receives the message as a lambda:
+
+~~~~~~~~
+inline fun Context.toast(message: () -> CharSequence) {
+    Toast.makeText(this, message(), Toast.LENGTH_SHORT).show()
+}
+~~~~~~~~
+
+We can use it without issues like this from Java:
+
+{lang="java"}
+~~~~~~~~
+ExtensionsKt.toast(this, () -> "Hello World");
+~~~~~~~~
+
+So inline functions work, but there is an interesting thing here. When used from Kotlin, the decompiled code looks like this:
+
+~~~~~~~~
+Toast.makeText(this, "Hello", 0).show();
+~~~~~~~~
+
+The function is being inlined as expected. What happens when used from Java?
+
+{lang="java"}
+~~~~~~~~
+ExtensionsKt.toast(this, DetailActivity$$Lambda$0.$instance);
+~~~~~~~~
+
+So, though you can use `inline` functions from Java, they are actually not inlined. It is calling the function and creating an object for the lambda. That is something to take into account. 
+
+Now, what happens to reified types? This is a function that navigates to the activity specified in the generic type:
+
+~~~~~~~~
+inline fun <reified T : Activity> Context.startActivity() {
+    startActivity(Intent(this, T::class.java))
+}
+~~~~~~~~
+
+Then, if you try to call this function from Java, you will see that this method appears to be private, so we cannot use it. Reified functions are not are not available from Java code.
+
+So now you understand better how all new Kotlin features behave when used from Java. You see that using the code we write in Kotlin from Java is effortless. Most of them can still be used, though certainly, we cannot take advantage of some Kotlin features from Java.

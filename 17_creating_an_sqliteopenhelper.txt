@@ -1,0 +1,215 @@
+# 17 Creating an SQLiteOpenHelper
+
+As you may know, Android uses SQLite as a database management system. SQLite is a database embedded into the app, and it is lightweight. That is why it is a good option for mobile apps.
+
+However, the API to work with databases in Android is somewhat raw. You will see you need to write many SQL sentences and map your objects into `ContentValue`s or from `Cursor`s. Thankfully, by using a mix of Kotlin and Anko, we are simplifying this task a lot.
+
+Of course, there are many libraries to work with databases in Android, and all of them work in Kotlin thanks to its interoperability. However, it is possible you can avoid using complicated frameworks if the database is simple, as we are going to see in a minute.
+
+## 17.1 ManagedSqliteOpenHelper 
+
+Anko provides a powerful `SqliteOpenHelper` which simplifies things a lot. When we use a regular `SqliteOpenHelper`, we need to call `getReadableDatabase()` or `getWritableDatabase()`, and then we can perform our queries over the object we get. After that, we should not forget to call `close()`. With a `ManagedSqliteOpenHelper` we just do:
+
+~~~~~~~~
+forecastDbHelper.use {
+...
+}
+~~~~~~~~
+
+Inside the lambda, we can use `SqliteDatabase` functions directly. How does it work? Take a look at the implementation of Anko functions; you can learn a good deal of Kotlin from them:
+
+~~~~~~~~
+public fun <T> use(f: SQLiteDatabase.() -> T): T {
+    try {
+        return openDatabase().f()
+    } finally {
+        closeDatabase()
+    }
+}
+~~~~~~~~
+
+First, `use` receives a function and uses it as an extension function for `SQLiteDatabase`. Thanks to extensions, we can use `this` inside the braces, and this is referring to the `SQLiteDatabase` object. This extension function can return a value, so we could do something like this:
+
+~~~~~~~~
+val result = forecastDbHelper.use {
+    val queriedObject = ...
+    queriedObject
+}
+~~~~~~~~
+
+Keep in mind that, inside a function, the last line represents the returned value. As `T` does not have any restrictions, we can return any value. Even `Unit` if we do not want to return anything.
+
+By using a `try-finally`, the `use` function makes sure that the database is closed no matter the extended function succeeds or crashes.
+
+Besides, we have a lot of other handy extension functions over `SqliteDatabase` that we will use later. For now, let's define the database tables and implement the `SqliteOpenHelper`.
+
+## 17.2 Tables definition
+
+Let's create a couple of objects that represent our tables. These objects will be helpful to avoid misspelling table or column names and repetition. We need two tables: one that saves the info of the city, and the other one the forecast for individual days. This second table has a foreign key to the first one.
+
+`CityForecastTable` first provides the name of the table and then the set of columns it needs: an `id` (which is the zip code of the city), the name of the city and the country.
+
+{title="data/db/Tables.kt", lang="kotlin"}
+~~~~~~~~
+object CityForecastTable {
+    const val NAME = "CityForecast"
+    const val ID = "_id"
+    const val CITY = "city"
+    const val COUNTRY = "country"
+}
+~~~~~~~~
+
+`DayForecast` has some more info, so it requires the set of columns you can see below. The last column, `cityId`, keeps the id of the `CityForecast` where this forecast belongs.
+
+{title="data/db/Tables.kt", lang="kotlin"}
+~~~~~~~~
+object DayForecastTable {
+    const val NAME = "DayForecast"
+    const val ID = "_id"
+    const val DATE = "date"
+    const val DESCRIPTION = "description"
+    const val HIGH = "high"
+    const val LOW = "low"
+    const val ICON_URL = "iconUrl"
+    const val CITY_ID = "cityId"
+}
+~~~~~~~~
+
+## 17.3 Implementing SqliteOpenHelper
+
+If you remember, Anko is divided into several libraries to be more lightweight.  We already added `anko-common`, but we also need `anko-sqlite` if we want to use database features:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+dependencies {
+    ...
+    compile "org.jetbrains.anko:anko-sqlite:$anko_version"
+}
+~~~~~~~~
+
+Our `SqliteOpenHelper` will basically manage the creation and upgrade of our database, and will provide the `SqliteDatabase` so that we can work with it. The queries will be extracted to another class:
+
+{title="data/db/ForecastDbHelper.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastDbHelper() : ManagedSQLiteOpenHelper(App.instance,
+        ForecastDbHelper.DB_NAME, null, ForecastDbHelper.DB_VERSION) {
+    ...
+}
+~~~~~~~~
+
+We are using the `App.instance` we created in the previous chapter, as well as a database name and version. Define these values in the companion object, along with the helper instance:
+
+{title="data/db/ForecastDbHelper.kt", lang="kotlin"}
+~~~~~~~~
+companion object {
+    const val DB_NAME = "forecast.db"
+    const val DB_VERSION = 1
+    val instance by lazy { ForecastDbHelper() }
+}
+~~~~~~~~
+
+The `instance` property uses a `lazy` delegate, which means the object is not created until its first use. That way, if the database is never employed, we avoid creating unnecessary objects. The regular `lazy` delegate is blocking in order to prevent the creation of several instances from different threads. This situation can only happen if two threads try to access the `instance` at the same time, which is difficult but it could happen depending on the type of app you are implementing.
+
+In order to create the database schema, we are required to provide an implementation of the `onCreate` function. When no libraries are used, tables creation is done by writing a raw `CREATE TABLE` query where we define all the columns and their types. However, Anko provides a simple extension function that receives the name of the table and a set of `Pair` objects that identify the name and the type of the column:
+
+{title="data/db/ForecastDbHelper.kt", lang="kotlin"}
+~~~~~~~~
+db.createTable(CityForecastTable.NAME, true,
+        Pair(CityForecastTable.ID, INTEGER + PRIMARY_KEY),
+        Pair(CityForecastTable.CITY, TEXT),
+        Pair(CityForecastTable.COUNTRY, TEXT))
+~~~~~~~~
+
+- The first parameter is the name of the table.
+- The second parameter, when set to `true`, checks if the table does not exist before trying to create it.
+- The third parameter is a `vararg` of `Pair`s. The `vararg` type also exists in Java, and it is a way to pass a variable number of arguments of the same type to a function. The function then receives an array with the objects.
+
+Column types are using a special Anko class called `SqlType`, which can be used together with `SqlTypeModifier`s, such as `PRIMARY_KEY`. The `+` operation is overloaded the same way we saw in chapter 11. This `plus` function properly concatenates both values returning a new special `SqlType`:
+
+~~~~~~~~
+fun SqlType.plus(m: SqlTypeModifier) : SqlType {
+    return SqlTypeImpl(name, if (modifier == null) m.toString() 
+            else "$modifier $m")
+}
+~~~~~~~~
+
+As you can see, it can also concatenate several modifiers.
+
+Coming back to our code, we can do it better. Kotlin standard library includes a function called `to` which, once more, shows the ability of Kotlin to let us model the language to our needs. It acts as an extension function for the first object and receives another object as a parameter, returning a `Pair` object with them. 
+
+~~~~~~~~
+infix fun <A, B> A.to(that: B): Pair<A, B> = Pair(this, that)
+~~~~~~~~
+
+Functions with one parameter that use the `infix` modifier can be used inline, so the result is quite clean:
+
+~~~~~~~~
+val pair = object1 to object2
+~~~~~~~~
+
+And this, applied to the creation of our tables:
+
+~~~~~~~~
+db.createTable(CityForecastTable.NAME, true,
+        CityForecastTable.ID to INTEGER + PRIMARY_KEY,
+        CityForecastTable.CITY to TEXT,
+        CityForecastTable.COUNTRY to TEXT)
+~~~~~~~~
+
+This is how the complete method looks:
+
+{title="data/db/ForecastDbHelper.kt", lang="kotlin"}
+~~~~~~~~
+override fun onCreate(db: SQLiteDatabase) {
+    db.createTable(CityForecastTable.NAME, true,
+            CityForecastTable.ID to INTEGER + PRIMARY_KEY,
+            CityForecastTable.CITY to TEXT,
+            CityForecastTable.COUNTRY to TEXT)
+
+    db.createTable(DayForecastTable.NAME, true,
+            DayForecastTable.ID to INTEGER + PRIMARY_KEY + AUTOINCREMENT,
+            DayForecastTable.DATE to INTEGER,
+            DayForecastTable.DESCRIPTION to TEXT,
+            DayForecastTable.HIGH to INTEGER,
+            DayForecastTable.LOW to INTEGER,
+            DayForecastTable.ICON_URL to TEXT,
+            DayForecastTable.CITY_ID to INTEGER)
+}
+~~~~~~~~
+
+We have a similar function to drop a table. `onUpgrade` just deletes the tables so that they are recreated. We are using our database just as a cache, so it is the easiest and safest way to be sure the tables are rebuilt as expected. If we had stored persistent data, we would need to improve `onUpgrade` code by doing the corresponding migration depending on the database version.
+
+~~~~~~~~
+override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+    db.dropTable(CityForecastTable.NAME, true)
+    db.dropTable(DayForecastTable.NAME, true)
+    onCreate(db)
+}
+~~~~~~~~
+
+## 17.4 Dependency injection
+
+Although I am trying not to add much complexity to the code regarding architectures, clean testable code or good practices, I thought it would be a good idea to show another way to simplify our code using Kotlin. If you want to know a little more about topics like dependency inversion or injection, you can check my set of articles about [dependency injection in Android using Dagger](http://antonioleiva.com/dependency-injection-android-dagger-part-1/). The first article covers a light explanation of these terms.
+
+To put it simply, if we want to have classes that are independent one from another, way more testable, and write code that is easy to extend and maintain, we need to make use of dependency inversion. Instead of instantiating the collaborators inside the class, we provide them (usually via constructor) and instantiate them somewhere else. That way, we can substitute them by other objects that, for instance, implement the same interface, or make use of mocks in tests.
+
+However, now those dependencies must be provided from somewhere, so the dependency injection consists of providing the collaborators required by the classes. Developers usually delegate this task to a dependency injector. [Dagger](https://google.github.io/dagger/) is probably the most famous dependency injector for Android. It is, of course, an excellent alternative when we need some complexity to provide those dependencies.
+
+But a simpler alternative is to make use of default values in constructors. We can provide the dependency by assigning a default value to constructor arguments, and then provide a different instance if we need it in other situations. For example, in our `ForecastDbHelper` we can provide the context in a smarter way:
+
+~~~~~~~~
+class ForecastDbHelper(ctx: Context = App.instance) : 
+    ManagedSQLiteOpenHelper(ctx, ForecastDbHelper.DB_NAME, null, 
+    ForecastDbHelper.DB_VERSION) {
+    ...
+}
+~~~~~~~~
+
+Now we have two ways to create this class:
+
+~~~~~~~~
+val dbHelper1 = ForecastDbHelper()  // It will use App.instance
+val dbHelper2 = ForecastDbHelper(mockedContext) // For tests, for example
+~~~~~~~~
+
+I will be using this mechanism here and there, so I did not want to continue without explaining the motivation. We already have created the tables, so it is time to start adding and requesting data from them. But before that, I want to talk about collections and functional operations. Remember to [check the repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-17) to find the latest changes.

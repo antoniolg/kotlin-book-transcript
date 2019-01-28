@@ -1,0 +1,68 @@
+# 8 Retrieving data from API
+
+## 8.1 Performing a request
+
+Our current placeholder texts are an excellent place to start getting an idea of what we want to achieve, but now it is time to request some real data, which will be used to populate the `RecyclerView`. We are going to make use of the [OpenWeatherMap](http://openweathermap.org/) API to retrieve data and some regular classes for the request. As Kotlin interoperability is extremely powerful, you could use any library you want, such as [Retrofit](https://github.com/square/retrofit), for server requests. However, as we are just performing a simple API request, we can achieve our goal much easier without adding another third-party library.
+
+Besides, as you will see, Kotlin provides some extension functions that will make requests much simpler. First, we are going to create a new `Request` class:
+
+{title="data/Request.kt", lang="kotlin"}
+~~~~~~~~
+class Request(private val url: String) {
+
+    fun run() {
+        val forecastJsonStr = URL(url).readText()
+        Log.d(javaClass.simpleName, forecastJsonStr)
+    }
+    
+}
+~~~~~~~~
+
+The constructor receives a URL. Then the `run` function reads the result and outputs the JSON in the Logcat. 
+
+The implementation is straightforward when using `readText`, an extension function from the Kotlin standard library. This method is not recommended for large responses, but it is good enough in our case.
+
+If you compare this code to the one you would need in Java, you will see that we have saved a considerable amount of overhead just by using the standard library. An `HttpURLConnection`, a `BufferedReader` and an iteration over the result would have been necessary to get the same result, apart from having to manage the status of the connection and the reader. Obviously, that is what the function is doing behind the scenes, but we have it for free.
+
+In order to be able to perform the request, the app must use the Internet permission. So it must be added to the `AndroidManifest.xml`:
+
+{title="AndroidManifest.xml", lang="xml"}
+~~~~~~~~
+<uses-permission android:name="android.permission.INTERNET" />
+~~~~~~~~
+
+## 8.2 Performing the request out of the main thread
+
+As you may know, HTTP requests are not allowed in the main thread, or the app will throw an exception. This limitation prevents from blocking the UI thread, which is a bad practice. The standard solution for Android is to use an `AsyncTask`. However, these classes are ugly and difficult to implement without any side effects. `AsyncTask`s are dangerous if not used carefully because by the time it reaches `postExecute`, the system could have destroyed the activity, and the task will crash.
+
+Anko provides a very easy DSL to deal with asynchrony, which fits most basic needs. It provides a `doAsync` function that executes its code in another thread, with the option to return to the main thread by calling `uiThread`. Executing the request in a secondary thread is as easy as this:
+
+{title="activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+val url = "http://api.openweathermap.org/data/2.5/forecast/daily?" +
+                "APPID=15646a06818f61f7b8d7823ca833e1ce&zip=94043&mode=json&units=metric&cnt=7"
+
+doAsync() {
+    Request(url).run()
+    uiThread { longToast("Request performed") }
+}
+~~~~~~~~
+
+You can [get the url from the repository branch](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-8) for this lesson.
+
+A beautiful thing about `uiThread` is that it has a different implementation depending on the caller object. When an `Activity` uses it, the `uiThread` code is not executed if `activity.isFinishing()` returns `true`, and it will not crash if the activity is no longer valid.
+
+You also can use your own executor:
+
+~~~~~~~~
+val executor = Executors.newScheduledThreadPool(4)
+doAsync(executor) {
+    // Some task
+}
+~~~~~~~~
+
+`doAsync` returns a java `Future`, in case you want to work with futures. If you need it to return a `Future` with a result, you can use `doAsyncResult`.
+
+It is simple and more straightforward to read than `AsyncTask`s. For now, I am just sending a static URL to the request, to test that we receive the content properly and that we can draw it in the activity. I will cover the JSON parsing and conversion to app data classes soon, but before we continue, it is essential to learn what a data class is.
+
+You can run the app and check that you can see the JSON in the log and the toast when the request finishes. 

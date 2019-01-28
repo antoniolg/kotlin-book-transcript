@@ -1,0 +1,60 @@
+# 9 Data Classes
+
+Data classes are a powerful kind of classes that avoid the boilerplate we need in Java to create POJO: classes which are used to keep state but are elementary in the operations they do. They usually only provide plain getters and setters to access to their fields. Defining a new data class is very easy:
+
+~~~~~~~~
+data class Forecast(val date: Date, val temperature: Float, val details: String)
+~~~~~~~~
+
+## 9.1 Extra functions
+
+Along with a data class, we get a handful of new functions for free, apart from the properties we already talked about (which prevent us from writing the accessors):
+
+- `equals()`: it compares the properties from both objects to ensure they are identical.
+- `hashCode()`: we get a hash code for free, also calculated from the values of the properties.
+- `copy()`: you can copy an object, modifying the properties you need. We will see an example later.
+-  A set of numbered functions that are used to map an object into variables. I will also explain this soon.
+
+## 9.2 Copying a data class
+
+If we use immutability, as talked some chapters ago, we find that if we want to change the state of an object, a new instance of the class is required, with one or more of its properties modified. This task can be slightly repetitive and far from clean. However, data classes include the `copy()` method, which makes the process easy and intuitive.
+
+For instance, if we need to modify the temperature of a `Forecast`, we can just do:
+
+~~~~~~~~
+val f1 = Forecast(Date(), 27.5f, "Shiny day")
+val f2 = f1.copy(temperature = 30f)
+~~~~~~~~
+
+This way, we copy the first forecast and modify only the `temperature` property without changing the state of the original object.
+
+W> ### Be careful with immutability when using Java classes
+W>
+W>If you decide to work with immutability, be aware that Java classes were not designed with this in mind, and there are still some circumstances where you are able to modify the state. In the previous example, you could always access the `Date` object and change its value. The easy (and unsafe) option is to remember the rules of not modifying the state of an object, but copying it when necessary. 
+W>
+W>Another option is to wrap these classes. You could create an `ImmutableDate` class which wraps a `Date` and does not allow to modify its state. It is up to you to decide which solution you take. In this book, I am not very strict with immutability. So I will not create wrappers for every potentially dangerous class.
+
+## 9.3 Mapping an object into variables
+
+This process is known as **declaration destructuring**, and consists of mapping each property inside an object into a variable. That is the reason why the `componentX` functions are automatically created. An example with the previous `Forecast` class:
+
+~~~~~~~~
+val f1 = Forecast(Date(), 27.5f, "Shiny day")
+val (date, temperature, details) = f1
+~~~~~~~~
+
+This multi-declaration is compiled down to the following code:
+
+~~~~~~~~
+val date = f1.component1()
+val temperature = f1.component2()
+val details = f1.component3()
+~~~~~~~~
+
+The logic behind this feature is powerful and can help simplify the code in many situations. For instance, `Map` class has some extension functions implemented that allow recovering its keys and values in an iteration:
+
+~~~~~~~~
+for ((key, value) in map) {
+    Log.d("map", "key:$key, value:$value")
+}
+~~~~~~~~

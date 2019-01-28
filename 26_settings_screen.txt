@@ -1,0 +1,264 @@
+# 26 Settings Screen
+
+Until now, we have been using a default city to implement the app, but it is time add the ability to select another city. The app needs a settings section where the user can change the city.
+
+We are going to stick to the zip code to identify the city. A real app would probably need more information because a zip code by itself does not identify a city in the whole world. But we at least will show a city around the world that uses the zip code we are defining in settings. This is a good chance to explain a different way to deal with preferences.
+
+## 26.1 Creating the settings activity
+
+A new activity will be opened when the settings option is selected in the overflow menu in the toolbar. So the first thing we need is a new `SettingsActivity`:
+
+{title="ui/activities/SettingsActivity.kt", lang="kotlin"}
+~~~~~~~~
+class SettingsActivity : AppCompatActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_settings)
+        setSupportActionBar(toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
+        android.R.id.home -> { 
+            onBackPressed() 
+            true 
+        }
+        else -> false
+    }
+}
+~~~~~~~~
+
+We will save the preference when the user gets out of the screen activity, so we are going to deal with the `Up` action the same way as the `Back` one, by redirecting the action to `onBackPressed`. Now, let's create the XML layout. A simple `EditText` is enough for the preference:
+
+{title="layout/activity_settings.xml", lang="xml"}
+~~~~~~~~
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <include layout="@layout/toolbar"/>
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="?attr/actionBarSize"
+        android:padding="@dimen/spacing_xlarge">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/city_zipcode"/>
+
+        <EditText
+            android:id="@+id/cityCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/city_zipcode"
+            android:inputType="number"/>
+
+    </LinearLayout>
+
+</FrameLayout>
+~~~~~~~~
+
+And then declare the activity in the `AndroidManifest.xml`:
+
+{title="AndroidManifest.xml", lang="xml"}
+~~~~~~~~
+<activity
+    android:name=".ui.activities.SettingsActivity"
+    android:label="@string/settings"/>
+~~~~~~~~
+
+## 26.2 Accessing Shared Preferences
+
+You probably know what Android [Shared Preferences](http://developer.android.com/training/basics/data-storage/shared-preferences.html) are. They consist of a set of keys and values that can be easily saved and restored by using the Android framework. These preferences are integrated with some parts of the SDK to make some tasks easier. Besides, since Android 6.0 (Marshmallow), shared preferences can be automatically cloud-saved, so when a user restores the app in a new device, these preferences are automatically recovered too.
+
+Thanks to the use of property delegation, we can deal with preferences cleverly. We can create a delegate that queries the preference when `get` is called and saves it when we call to `set`. 
+
+As we want to save the zip code, which is a `Long` value, let's create a delegate for `Long` properties. In `DelegatesExtensions.kt`, implement a new `LongPreference` class:
+
+{title="extensions/DelegatesExtensions.kt", lang="kotlin"}
+~~~~~~~~
+class LongPreference(
+        private val context: Context, 
+        private val name: String, val default: Long) {
+
+    private val prefs by lazy {
+        context.getSharedPreferences("default", Context.MODE_PRIVATE)
+    }
+
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): Long =
+        prefs.getLong(name, default)
+
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, value: Long) {
+        prefs.edit().putLong(name, value).apply()
+    }
+}
+~~~~~~~~
+
+First, we create a lazy access to preferences. That way, if we do not use the property, this delegate never requests the `SharedPreferences` object.
+
+When `get` is called, its implementation uses the preferences instance to retrieve a long property with the name that was specified in the delegate declaration, and defaulting to the `default` value if the property is not found. When a value is set, it requests a preferences editor that saves the value using the name of the property.
+
+We can then define the new delegate in the `DelegatesExt` object, so that it is easier to access when required:
+
+{title="extensions/DelegatesExtensions.kt", lang="kotlin"}
+~~~~~~~~
+object DelegatesExt {
+    ....
+    fun longPreference(context: Context, name: String, default: Long) = 
+        LongPreference(context, name, default)
+}
+~~~~~~~~
+
+In `SettingsActivity`, we can now define a property to deal with the zip code preference. I am also creating a couple of constants which keep the name and the default value of the property. That way they can be used in other sections of the App.
+
+{title="ui/activities/SettingsActivity.kt", lang="kotlin"}
+~~~~~~~~
+companion object {
+    const val ZIP_CODE = "zipCode"
+    const val DEFAULT_ZIP = 94043L
+}
+
+private var zipCode: Long 
+        by DelegatesExt.longPreference(this, ZIP_CODE, DEFAULT_ZIP)
+~~~~~~~~
+
+Now it is easy to work with this preference. In `onCreate`, we get the value of the property and assign it to the `EditText`:
+
+{title="ui/activities/SettingsActivity.kt", lang="kotlin"}
+~~~~~~~~
+override fun onCreate(savedInstanceState: Bundle?) {
+    ...
+    cityCode.setText(zipCode.toString())
+}
+~~~~~~~~
+
+We cannot use the self-generated property `text` because `EditText` returns an `Editable` in `getText`, so the property defaults to that value. If we try to assign a `String`, the compiler will complain. Using `setText()` will be enough.
+
+Now we have everything we need to implement `onBackPressed`. Here, the new value of the property is saved:
+
+{title="ui/activities/SettingsActivity.kt", lang="kotlin"}
+~~~~~~~~
+override fun onBackPressed() {
+    super.onBackPressed()
+    zipCode = cityCode.text.toString().toLong()
+}
+~~~~~~~~
+
+The `MainActivity` requires some little changes. First, it also needs a `zipCode` property. 
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+private val zipCode: Long by DelegatesExt.longPreference(this, 
+        SettingsActivity.ZIP_CODE, SettingsActivity.DEFAULT_ZIP)
+~~~~~~~~
+
+Moreover, I am moving the forecast load to `onResume` so that every time the activity is resumed, it refreshes the data, just in case the zip code changed. Of course, there are more efficient ways to do this, by checking whether the zip code changed before requesting the forecast again, for instance. But I want to keep this example simple, and the local database already keeps the requested info, so this solution is not that bad:
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+override fun onResume() {
+    super.onResume()
+    loadForecast()
+}
+
+private fun loadForecast() = doAsync {
+    val result = RequestForecastCommand(zipCode).execute()
+    uiThread {
+        val adapter = ForecastListAdapter(result) {
+            startActivity<DetailActivity>(DetailActivity.ID to it.id,
+                    DetailActivity.CITY_NAME to result.city)
+        }
+        forecastList.adapter = adapter
+        toolbarTitle = "${result.city} (${result.country})"
+    }
+}
+~~~~~~~~
+
+The `RequestForecastCommand` is now using the `zipCode` property instead of the previously fixed value.
+
+There is just one more thing we must do: start the settings activity when the user clicks on the overflow action. In `ToolbarManager`, the `initToolbar` function requires a small change:
+
+{title="ui/activities/ToolbarManager.kt", lang="kotlin"}
+~~~~~~~~
+when (it.itemId) {
+    R.id.action_settings -> toolbar.ctx.startActivity<SettingsActivity>()
+    else -> App.instance.toast("Unknown option")
+}
+~~~~~~~~
+
+## 26.3 Generic preference delegate
+
+Now that we are generics experts, why not extending `LongPreference` to be used with any type that Shared Preferences support?  Let's create a new `Preference` delegate:
+
+{title="extensions/DelegatesExtensions.kt", lang="kotlin"}
+~~~~~~~~
+class Preference<T>(private val context: Context, private val name: String, 
+    private val default: T) {
+
+    private val prefs by lazy { 
+        context.getSharedPreferences("default", Context.MODE_PRIVATE) 
+    }
+
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T =
+        findPreference(name, default)
+
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
+        putPreference(name, value)
+    }
+    ...
+  }
+~~~~~~~~
+
+This preference is very similar to what we had before. We just substituted the `Long` references with a generic type `T`, and called to a couple of functions that do the hard work. These functions are very simple, though a bit repetitive. They check the type and use the specific method from preferences. For instance, the `findPreference` function looks like this:
+
+{title="extensions/DelegatesExtensions.kt", lang="kotlin"}
+~~~~~~~~
+private fun findPreference(name: String, default: T): T = with(prefs) {
+    val res: Any = when (default) {
+        is Long -> getLong(name, default)
+        is String -> getString(name, default)
+        is Int -> getInt(name, default)
+        is Boolean -> getBoolean(name, default)
+        is Float -> getFloat(name, default)
+        else -> throw IllegalArgumentException(
+            "This type can't be saved into Preferences")
+    }
+
+    res as T
+}
+~~~~~~~~
+
+And basically the same for `putPreference` function, but using the preferences editor and saving the result of `when` at the end, by calling `apply()`:
+
+{title="extensions/DelegatesExtensions.kt", lang="kotlin"}
+~~~~~~~~
+private fun putPreference(name: String, value: T) = with(prefs.edit()) {
+    when (value) {
+        is Long -> putLong(name, value)
+        is String -> putString(name, value)
+        is Int -> putInt(name, value)
+        is Boolean -> putBoolean(name, value)
+        is Float -> putFloat(name, value)
+        else -> throw IllegalArgumentException("This type can be saved into Preferences")
+    }.apply()
+}
+~~~~~~~~
+
+Now update `DelegatesExt` object and you are done:
+
+{title="extensions/DelegatesExtensions.kt", lang="kotlin"}
+~~~~~~~~
+object DelegatesExt {
+    ...
+     fun <T> preference(context: Context, name: String, default: T) 
+         = Preference(context, name, default)
+}
+~~~~~~~~
+
+After this chapter, the user can now access the settings screen and modify the zip code. That way, when they return to the main screen, the forecast is automatically refreshed with the new information. Check the rest of small tweaks [in the repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-26).

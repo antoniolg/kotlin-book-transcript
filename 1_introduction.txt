@@ -1,0 +1,170 @@
+# 1 Introduction
+
+Things are changing for good for Android Developers. In Google I/O 2017, the Android team announced that Kotlin was becoming an official language to develop Android apps.
+
+This means that, while it is still possible to develop Android apps using Java, from now on Kotlin is fully supported, and Google is making sure that every new Android feature, the framework, the IDE and all their libraries work seamlessly with the new language.
+
+Google listened to the community, who was asking for years that Kotlin became a first-party language. So you can now take advantage of all the features of a modern language while developing for Android.
+
+Throughout this book, I will show you how, so I hope that I can help you understand the various ways that Kotlin can take you one step ahead and make your code much better.
+
+However, before diving into the features of the language, let me tell you just a little bit of background.
+
+## 1.1 What is Kotlin?
+
+Kotlin is language developed by [JetBrains](https://www.jetbrains.com/), a company known for building the IntelliJ IDEA, a powerful IDE for Java development. Android Studio, the official Android IDE, is based on IntelliJ. It was initially implemented to run on the Java Virtual Machine.
+
+JetBrains designed Kotlin with Java developers in mind, and with IntelliJ as its primary development IDE. These two factors are breaking points that made Android developers quickly adopt the language:
+
+- **Kotlin is very intuitive and easy to learn for Java developers**. Most parts of the language are very similar to what we already know, and the differences can be mastered in no time.
+
+- **We have total integration with our daily IDE for free**. Android Studio can understand, compile and run Kotlin code. Moreover, the support for this language comes from the company who develops the IDE, so we Android developers are first-class citizens.
+
+However, this is only related to how the language integrates with our tools. What are the advantages of the language when compared to Java 6?
+
+- ** It is more expressive**: this is one of its main points. You can write more with much less code.
+
+- ** It is safer**: Kotlin is null safe, which means that we deal with possible null situations at compile time, to prevent execution time exceptions. We need to specify that an object can be null explicitly, and then check its nullity before using it. You can save much time debugging null pointer exceptions and fixing nullity bugs.
+
+- ** It is functional**: Kotlin is fundamentally an object-oriented language, not a pure functional language. However, like many other modern languages, it uses many concepts from functional programming, such as lambda expressions, to solve some problems more naturally. Another nice feature is the way it deals with collections.
+
+- **It makes use of extension functions**: This means we can extend any class with new features even if we do not have access to the source code.
+
+- ** It is highly interoperable**: You can continue using most libraries and code written in Java because the interoperability between both languages is excellent. It is even possible to create mixed projects, with both Kotlin and Java files coexisting.
+
+However, this is only the tip of the iceberg:
+- Since Kotlin 1.1, the final version of [Kotlin JS](https://kotlinlang.org/docs/reference/js-overview.html) was released. This new variant allows you to develop web apps using Kotlin.
+- Since Kotlin 1.2, you can also create [multiplatform projects](https://kotlinlang.org/docs/reference/whatsnew12.html#multiplatform-projects-experimental). With it, you can share code between JVM and Javascript.
+- The JetBrains team has also released [Kotlin/Native](https://kotlinlang.org/docs/reference/native-overview.html), a project that finally takes Kotlin out of the JVM. Thanks to it, you will be able to implement the server, the web and the Android and iOS Apps using Kotlin for most of the code base.
+- Gradle 5.0 has added support to Kotlin DSL (a simplified version of Kotlin) to write Gradle files instead of Groovy. This is already an official feature that you can start using today. You can read more in [Gradle's blog](https://blog.gradle.org/kotlin-dsl-1.0).
+
+So you can see that the future of Kotlin is pretty promising. Learning Kotlin can become the language of reference in many other platforms, and sharing code among all them is undoubtedly a high selling point.
+
+## 1.2 What do we get with Kotlin?
+
+Without diving too deep into the Kotlin language (we will learn everything about it throughout this book), these are some interesting features we miss in Java:
+
+### Expressiveness
+
+With Kotlin, it is much easier to avoid boilerplate because the language covers the most common patterns by default. For instance, in Java, if we want to create a data class, we need to write (or at least generate) this code:
+
+{lang="java"}
+~~~~~~~~
+public class Artist {
+    private long id;
+    private String name;
+    private String url;
+    private String mbid;
+ 
+    public long getId() {
+        return id;
+    }
+ 
+    public void setId(long id) {
+        this.id = id;
+    }
+ 
+    public String getName() {
+        return name;
+    }
+ 
+    public void setName(String name) {
+        this.name = name;
+    }
+ 
+    public String getUrl() {
+        return url;
+    }
+ 
+    public void setUrl(String url) {
+        this.url = url;
+    }
+ 
+    public String getMbid() {
+        return mbid;
+    }
+ 
+    public void setMbid(String mbid) {
+        this.mbid = mbid;
+    }
+ 
+    @Override public String toString() {
+        return "Artist{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", url='" + url + '\'' +
+                ", mbid='" + mbid + '\'' +
+                '}';
+    }
+}
+~~~~~~~~
+
+With Kotlin, you just need to make use of a data class:
+
+~~~~~~~~
+data class Artist(
+    var id: Long, 
+    var name: String, 
+    var url: String, 
+    var mbid: String)
+~~~~~~~~
+
+This data class auto-generates all the fields and property accessors, as well as some useful methods such as `toString()`. You also get `equals()` and `hashCode()` for free, which are very verbose and can be dangerous if they are incorrectly implemented.
+
+### Null Safety
+
+When we use Java, a significant amount of our code is defensive. We need to check once and another whether something is null before using it to prevent unexpected *NullPointerException*. Kotlin, like many other modern languages, is null-safe because the type explicitly defines whether an object can be null by using the safe call operator (written `?`).
+
+We can do things like this:
+
+~~~~~~~~
+// This does not compile. Artist cannot be null
+var notNullArtist: Artist = null
+ 
+// Artist can be null
+var artist: Artist? = null
+ 
+// Will not compile, artist could be null and we need to deal with that
+artist.print()
+ 
+// Will print only if artist != null
+artist?.print()
+ 
+// Smart cast. We don not need to use safe call operator if we previously 
+// checked nullity
+if (artist != null) {
+    artist.print()
+}
+ 
+// Only use it when we are sure it is not null. It throws an exception otherwise.
+artist!!.print()
+ 
+// Use Elvis operator to give an alternative in case the object is null.
+val name = artist?.name ?: "empty"
+~~~~~~~~
+
+### Extension functions
+
+Thanks to extension functions, you can add new functions to any class. It is a cleaner substitute for the common utility classes we all have in our projects. You could, for instance, add a new method to fragments to show a toast:
+
+~~~~~~~~
+fun Fragment.toast(message: CharSequence, duration: Int = Toast.LENGTH_SHORT) {
+    Toast.makeText(getActivity(), message, duration).show()
+}
+~~~~~~~~
+
+And then use it like this:
+
+~~~~~~~~
+fragment.toast("Hello world!")
+~~~~~~~~
+
+### Functional support (Lambdas)
+
+What if, instead of having to declare an anonymous class every time we need to implement a click listener, we could just define what we want to do? We can indeed do it. This (and many other interesting things) is what we get thanks to lambdas:
+
+~~~~~~~~
+view.setOnClickListener { toast("Hello world!") }
+~~~~~~~~
+
+This set of features is only a small selection of what Kotlin can do to simplify your code. Now that you know some of the many great features of the language, you may decide that this is not for you. If you continue, we will start writing some code right away in the next chapter.

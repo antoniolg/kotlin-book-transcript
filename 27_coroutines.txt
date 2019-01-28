@@ -1,0 +1,205 @@
+# 27 A first walk into coroutines
+
+Coroutines were the most significant introduction to Kotlin 1.1. They are great because of how powerful they are, and the community is still finding out how to take the most out of them.
+
+To put it simply, coroutines are a way to write asynchronous code sequentially. Instead of messing around with callbacks, you can write your lines of code one after the other. Some of them can suspend the execution and wait until the result is available.
+
+If you were a former C# developer, async/await is the closest concept. However, coroutines in Kotlin are more powerful, because instead of being a specific implementation of the idea, they are a language feature that developers can implement in different ways to solve specific problems.
+
+You can write your solution, or use one of the several options that the Kotlin team and other independent developers have built.
+
+You need to understand that coroutines are an experimental feature in Kotlin 1.1. The Kotlin team uses this category for features that they want to release early but might change in the future.  In the case of coroutines, they plan to support the current API, but you might want to migrate to the new definition. As we will see later, you need to opt in for this feature. Otherwise, the IDE shows a warning when you use it.
+
+But this also means that you should take this chapter as an example of what you can do, not a rule of thumb. Things may change in the next few months.
+
+## 27.1 Understanding how coroutines work
+
+My goal here is that you can get some basic concepts and use one of the existing libraries, not to build your implementations. But I think it is important to understand some of the internals so that you do not blindly use what you are given.
+
+Coroutines are based on the idea of *suspending functions*: functions that can stop the execution when they are called and make it continue once it has finished running their background task.
+
+Suspending functions are marked with the reserved word `suspend`, and can only be called inside other suspending functions or a coroutine.
+
+Thus, you cannot call a suspending function everywhere. There needs to be a surrounding function that builds the coroutine and provides the required context. Something like this:
+
+~~~~~~~~
+fun <T> async(block: suspend () -> T)
+~~~~~~~~
+
+I am not explaining how to implement the above function. It is a complicated process that is out of the scope of this book, and for most cases, there are solutions already implemented for you. If you are interested in building your own, you can read the specification written in [coroutines Github](https://github.com/Kotlin/kotlin-coroutines/blob/master/kotlin-coroutines-informal.md). What you need to know is that the function can have whatever name you want to give it and that it has at least a suspending block as a parameter.
+
+Then you could implement a suspending function and call it inside that block:
+
+~~~~~~~~
+suspend fun mySuspendingFun(x: Int) : Result {
+    ...
+}
+
+async { 
+    val res = mySuspendingFun(20)
+    print(res)
+}
+~~~~~~~~
+
+Are coroutines threads then? Not exactly. They work similarly, but are much more lightweight and efficient. You can have millions of coroutines running on a few threads, which opens a world of possibilities.
+
+There are three ways you can make use of the coroutines feature:
+
+- Raw implementation: it means building your way to use coroutines. This is quite complex and usually not required at all.
+- Low-level implementations: Kotlin provides a set of libraries that you can find in [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) repository, which solves some of the hardest parts and provides a specific implementation for different scenarios. There is [one for Android](https://github.com/Kotlin/kotlinx.coroutines/tree/master/ui/kotlinx-coroutines-android), for instance.
+- Higher-level implementations: if you want to have a solution that provides everything you need to start using coroutines right away, there are several libraries out there that do all the hard work for you, and the list keeps growing. I am going to stick to Anko, which provides a solution that works well on Android, and you are already familiar with the library.
+
+## 27.2 Using Anko for coroutines
+
+Since 0.10 version, Anko provides a couple of ways to use coroutines in Android.
+
+The first one is very similar to what we saw in the example above, and also similar to what other libraries do.
+
+First, you need to create an async block where suspension functions can run:
+
+~~~~~~~~
+async(UI) {
+    ...
+}
+~~~~~~~~
+
+The UI argument is the execution context for the `async` block.
+
+Then you can create blocks that are executed in a background thread and return the result to the UI thread. Those blocks are defined using the `bg` function:
+
+~~~~~~~~
+async(UI) {
+    val r1: Deferred<Result> = bg { fetchResult1() }
+    val r2: Deferred<Result> = bg { fetchResult2() }
+    updateUI(r1.await(), r2.await())
+}
+~~~~~~~~
+
+`bg` returns a `Deferred` object, which suspends the coroutine when the function `await()` is called, just until it returns the result. We will see this option in the example below.
+
+As you know, as Kotlin compiler can infer the type of the variables, this could be simpler:
+
+~~~~~~~~
+async(UI) {
+    val r1 = bg { fetchResult1() }
+    val r2 = bg { fetchResult2() }
+    updateUI(r1.await(), r2.await())
+}
+~~~~~~~~
+
+The second alternative is to make use of the integration with listeners that is provided on specific sub-libraries, depending on which listener you are going to use. For instance, on `anko-sdk15-coroutines`, there exists an `onClick` listener whose lambda is indeed a coroutine. So you can start using suspending functions right away inside the listener block:
+
+~~~~~~~~
+textView.onClick {
+    val r1 = bg { fetchResult1() }
+    val r2 = bg { fetchResult2() }
+    updateUI(r1.await(), r2.await())
+}
+~~~~~~~~
+
+As you can see, the result is very similar to the previous one. You are just saving some code.
+
+To use it, you will need to add some of these dependencies, depending on the listeners you want to use:
+
+{lang="groovy"}
+~~~~~~~~
+compile "org.jetbrains.anko:anko-sdk15-coroutines:$anko_version"
+compile "org.jetbrains.anko:anko-appcompat-v7-coroutines:$anko_version"
+compile "org.jetbrains.anko:anko-design-coroutines:$anko_version"
+~~~~~~~~
+
+## 27.3 Using coroutines in our example
+
+Our current example does not have many complex requests, and there is not much value in using coroutines instead of `doAsync`, but I want to show you how to configure your project to start using them. It is pretty straightforward.
+
+First, add the dependency to the `build.gradle`:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+compile "org.jetbrains.anko:anko-coroutines:$anko_version"
+~~~~~~~~
+
+Next, if you remember, I told you that you need to opt in for the feature. Otherwise, it will show a warning. To do that, simply add to the module`build.gradle`:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+kotlin {
+    experimental {
+        coroutines "enable"
+    }
+}
+~~~~~~~~
+
+Now you are ready to start using coroutines. Let's go first to the detail activity.
+
+You can change this code:
+
+~~~~~~~~
+doAsync {
+    val result = RequestDayForecastCommand(intent.getLongExtra(ID, -1)).execute()
+    uiThread { bindForecast(result) }
+}
+~~~~~~~~
+
+with this one:
+
+{title="ui/activities/DetailActivity.kt", lang="kotlin"}
+~~~~~~~~
+async(UI) {
+    val result = bg { RequestDayForecastCommand(intent.getLongExtra(ID, -1))
+        .execute() }
+    bindForecast(result.await())
+}
+~~~~~~~~
+
+The forecast is requested in a background thread thanks to the `bg` function, which returns a deferred result. That result is awaited in the `bindForecast` call until it is ready to be returned.
+
+Though there is a problem here. Coroutines have a problem: they are keeping a reference to `DetailActivity`, leaking it if the request never finishes for instance.
+
+No worries, because Anko has a solution. You can create a weak reference to your activity, and use that one instead:
+
+~~~~~~~~
+val ref = asReference()
+val id = intent.getLongExtra(ID, -1)
+
+async(UI) {
+    val result = bg { RequestDayForecastCommand(id).execute() }
+    ref().bindForecast(result.await())
+}
+~~~~~~~~
+
+This reference allows calling the activity when it is available and cancels the coroutine in case the activity has been killed. Be careful to ensure that all calls to activity methods or properties are done via this `ref` object.
+
+But this can get a little complicated if the coroutine interacts several times with the activity. In `MainActivity`, for instance, this solution becomes a little more convoluted:
+
+~~~~~~~~
+private fun loadForecast() {
+
+    val ref = asReference()
+    val localZipCode = zipCode
+
+    async(UI) {
+        val result = bg { RequestForecastCommand(localZipCode).execute() }
+        val weekForecast = result.await()
+        ref().updateUI(weekForecast)
+    }
+}
+~~~~~~~~
+
+You cannot use `ref()` inside the `bg` block because the code inside that block is not a suspension context, so you need to save the `zipCode` into another local variable.
+
+I honestly think that leaking the activity for 1-2 seconds is not that bad, and probably will not be worth the boilerplate. In fact, we were already leaking it with the previous solution. So if you can ensure that your background process is not taking forever (for instance, by setting a timeout to your server requests), you are safe by not using `asReference()`.
+
+This way, the changes to `MainActivity` would be simpler:
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+private fun loadForecast() = async(UI) {
+    val result = bg { RequestForecastCommand(zipCode).execute() }
+    updateUI(result.await())
+}
+~~~~~~~~
+
+So with all this, you now have your asynchronous code written synchronously very easily. As I said at the beginning, this code is quite simple, but imagine convoluted cases where the result of one background operation is used by the next one, or when you need to iterate over a list and execute a request per item. All this can be written as regular synchronous code, which is much easier to read and maintain.
+
+Bye bye, callback hell. Check new changes in [chapter-27](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-27) branch.

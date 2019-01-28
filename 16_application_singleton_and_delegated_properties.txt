@@ -1,0 +1,283 @@
+# 16 Application Singleton and Delegated Properties
+
+We are implementing a database soon and if we want to keep our code simple and our app in independent layers (instead of everything added to our activity), we need to have easier access to the application context.
+
+## 16.1 Application Singleton
+
+The simplest way is to create a singleton the way we would do in Java:
+
+{title="ui/App.kt", lang="kotlin"}
+~~~~~~~~
+class App : Application() {
+
+    companion object {
+        private var instance: Application? = null
+        fun instance() = instance!!
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+}
+~~~~~~~~
+
+Remember you need to add this `App` class to the `AndroidManifest.xml` in order to be used as the application instance:
+
+{title="AndroidManifest.xml", lang="xml"}
+~~~~~~~~
+<application
+    android:allowBackup="true"
+    android:icon="@mipmap/ic_launcher"
+    android:label="@string/app_name"
+    android:theme="@style/AppTheme"
+    android:name=".ui.App">
+    ...
+</application>
+~~~~~~~~
+
+The problem with Android is that we do not have control over many class constructors. For instance, we cannot initialize a non-nullable property, because its value must be declared in the constructor. So we need a nullable variable and then a function that returns a non-nullable value. We know we always have an `App` instance, and that the first code that executes is application `onCreate`, so we are safe by assuming `instance()` function can always return a non-nullable `App` instance.
+
+However, this solution seems strange. We need to define a property (which already has a getter and a setter) and then a function to return that property. Do we have another way to get a similar result? Yes, we can delegate the value of a property to another class.
+
+## 16.2 Delegated Properties
+
+There are some typical behaviors we may need in a property that would be interesting to be reused, such as lazy values or observable properties. Instead of having to declare the same code over and over again, Kotlin provides a way to delegate the code that a property needs to another class. These members are known as **delegated properties**.
+
+When we use `get` or `set` from a property, the delegate calls to its corresponding `getValue` and `setValue`, which can decide if, when and how the value is set or returned.
+
+The structure of a property delegate is:
+
+~~~~~~~~
+class Delegate<T> {
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+        return ...
+    }
+ 
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
+        ...
+    }
+}
+~~~~~~~~
+
+The `T` is the type of the property that is delegating its behavior. The `getValue` function receives a reference to the class and the metadata of the property. The `setValue` function also receives the assigned value. If the property is immutable (`val`), it only requires the `getValue` function.
+
+The snippet below is an example of how the property delegate is assigned:
+
+~~~~~~~~
+class Example {
+  var p: String by Delegate()
+}
+~~~~~~~~
+
+It uses **`by`** reserved word to specify the delegation.
+
+## 16.3 Standard Delegates
+
+You can find a set of delegates included in the Kotlin standard library. These are the most common circumstances where a delegate may be useful, but we could also create our own.
+
+### Lazy
+
+It takes a lambda that runs after the first call to `getValue`, so the initialization of the property is delayed up to that moment. Subsequent calls return the same value. This delegate is very interesting for things that are not always used or require some other parts to be ready before this one can be declared. We can save memory and skip the initialization until the property is required.
+
+~~~~~~~~
+class App : Application() {
+    val database: SQLiteOpenHelper by lazy {
+        MyDatabaseHelper(applicationContext)
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val db = database.writableDatabase
+    }
+}
+~~~~~~~~
+
+In this example, the database does not initialize until it is called first time in `onCreate`. At that moment, we are sure the application context exists and is ready to be used. The `lazy` operation is thread-safe.
+
+You can also use `lazy(LazyThreadSafetyMode.NONE) { ... }` if you are not worried about multi-threading and want to get some extra performance.
+
+### Observable
+
+This delegate helps us detect changes on any property we need to observe. It executes the declared lambda expression every time the `set` function is called. So after the new value is assigned, we receive the delegated property, the old value, and the new one.
+
+~~~~~~~~
+class ViewModel(val db: MyDatabase) {
+
+    var myProperty by Delegates.observable("") {
+        _, _, new ->
+        db.saveChanges(this, new)
+    }
+
+}
+~~~~~~~~
+
+This example represents some `ViewModel` class which is aware of `myProperty` changes and saves them to the database every time a new value is assigned.
+
+I> ### Underscores for unused parameters
+I>
+I> Since Kotlin 1.1, you can use underscores to avoid giving a name to a lambda argument that you are not using. This simplification helps both the compiler and the reader. The compiler can prevent saving memory for the ignored input arguments, and the reader does not need to parse which parameters are being used and discard the ones that are not. 
+
+### Vetoable
+
+This delegate is similar to observable, with the difference that it runs before the value is assigned, and lets you decide whether the value must be saved or not. It can be used to check some conditions before saving a value.
+
+~~~~~~~~
+var positiveNumber = Delegates.vetoable(0) {
+    _, _, new ->
+    new >= 0
+}
+~~~~~~~~
+
+The former delegate only allows saving the new value if it is a positive number. Inside lambdas, the latest line represents the return value. You cannot use the `return` word because it will not compile.
+
+### lateinit
+
+Sometimes we need something else to initialize a property, but we lack the necessary state available in the constructor, or we are even not able to retrieve it at that point. This second case happens now and then in Android: in activities, fragments, services or broadcast receivers for example. However, a non-abstract property needs a value before the constructor finishes executing. We cannot just wait until we want to assign a value to the property. We have at least a couple of options. 
+
+The first one is to use a nullable type and set it to null until we have the real value. With this solution, we then need to check everywhere throughout the code whether the property is null or not. If we are sure that the property will not be null the first time we use it, this may make us write some unnecessary code.
+
+The second alternative is **`lateinit`**, which can be used to identify that the property should have a non-nullable value, but we are delaying the assignment. If the value is requested before it is assigned, it will throw an exception that identifies the accessed property. 
+
+**`lateinit`** is not exactly a delegate, but a property modifier, and that is why it must be written before the property.
+
+This modifier is helpful in the App singleton example:
+
+~~~~~~~~
+class App : Application() {
+
+    companion object {
+        lateinit var instance: App
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+}
+~~~~~~~~
+
+**`lateinit`** is also indispensable when working with a dependency injector such as Dagger, and very useful for tests too.
+
+### Values from a map
+
+Another way to delegate the values of a property is to get them from a map, using the name of the property as the key of the map. This delegate lets create an instance of an object from a dynamic map. If we are using immutable properties, the map can be immutable too. For mutable properties, the class requires a `MutableMap` as constructor parameter instead.
+
+Imagine a configuration class we load from a JSON, and assign those keys and values to a map. We could create an instance of a class by passing this map to the constructor:
+
+~~~~~~~~
+class Configuration(map: Map<String, Any?>) {
+    val width: Int by map
+    val height: Int by map
+    val dp: Int by map
+    val deviceName: String by map
+}
+~~~~~~~~
+
+As a reference, here it is how we could create the map that this class would require:
+
+~~~~~~~~
+val conf = Configuration(mapOf(
+        "width" to 1080,
+        "height" to 720,
+        "dp" to 240,
+        "deviceName" to "mydevice"
+))
+~~~~~~~~
+
+## 16.4 How to create a custom delegate
+
+Let's say we want, for instance, to create a non-nullable delegate that can be only assigned once. The second time it is assigned, it will throw an exception. 
+
+To define a delegate class, you only need to write a couple of operator functions: `getValue` and `setValue`. They have a very specific set of arguments that look like this:
+
+{title="ui/utils/DelegatesExt.kt", lang="kotlin"}
+~~~~~~~~
+class NotNullSingleValueVar<T> {
+
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T {
+        return ...
+    }
+
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
+        ...
+    }
+}
+~~~~~~~~
+
+This delegate can work with any non-nullable type. It receives a reference of an object of any type, and use `T` as the type of the getter and the setter. Now we need to implement the methods:
+
+- The getter returns a value if it is assigned; otherwise, it throws an exception.
+- The setter assigns the value if it is still null; otherwise, it throws an exception.
+
+{title="ui/utils/DelegatesExt.kt", lang="kotlin"}
+~~~~~~~~
+class NotNullSingleValueVar<T> {
+
+    private var value: T? = null
+
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T =
+        value ?: throw IllegalStateException("${property.name} " +
+                "not initialized")
+    }
+
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
+        this.value = if (this.value == null) value
+        else throw IllegalStateException("${property.name} already initialized")
+    }
+}
+~~~~~~~~
+
+Now let's create an object with a function that provides your new delegate:
+
+{title="ui/utils/DelegatesExt.kt", lang="kotlin"}
+~~~~~~~~
+object DelegatesExt {
+    fun <T> notNullSingleValue() = NotNullSingleValueVar<T>()
+}
+~~~~~~~~
+
+This last part is not necessary, but it can help you aggregate all the delegates you implement.
+
+## 16.5 Reimplementing the App Singleton
+
+Delegates can help us in this situation. We know that our singleton is not going to be null, but we cannot use the constructor to assign the property. So we can make use of a `lateinit` delegate:
+
+{title="ui/App.kt", lang="kotlin"}
+~~~~~~~~
+class App : Application() {
+
+    companion object {
+        lateinit var instance: App
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+}
+~~~~~~~~
+
+The problem with this solution is that we could change the value of this instance from anywhere in the app because a `var` property is required if we want to use `lateinit`. That is easy to solve by using a private `set`:
+
+~~~~~~~~
+companion object {
+    lateinit var instance: App
+        private set
+}
+~~~~~~~~
+
+Now, the value of the instance can only be modified inside the `App` class.
+
+But we will make use of our custom delegate instead:
+
+{title="ui/App.kt", lang="kotlin"}
+~~~~~~~~
+companion object {
+    var instance: App by DelegatesExt.notNullSingleValue()
+}
+~~~~~~~~
+
+Though, in this case, `lateinit` is probably the simplest option, I wanted to show you how to create a custom property delegate and use it in your code.
+
+Take a look at the specific [branch of this chapter](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-16) if you have any doubts.

@@ -1,0 +1,172 @@
+# 3 Creating a new project
+
+So now it is time to start creating our App. I want to keep the explanation simple on purpose, because Android Studio wizard changes from time to time and these lines can become deprecated pretty soon.
+
+Our app consists of a simple weather app, such as the one used in [Google's Beginners Course from Udacity](https://udacity.com/course/new-android-fundamentals--ud851). We will be paying attention to different things, but the idea of the app is the same because it includes many of the things you find in a regular app. If you are starting with Android development, I recommend you this course.
+
+## 3.1 Create a new project in Android Studio
+
+Again, there is a small difference depending on the Android Studio version you are using.
+
+For Android Studio 3, the steps are pretty straightforward. Previous versions require a little more work, but it is far from complicated too. Even if you are already using new versions of Android Studio, I recommend you to take a look to the whole process, because it is what you would need to do if you want to start using Kotlin on a Java project.
+
+First of all, open Android Studio and choose `Create New Project`. The first step is to decide a name for your app; you can use the name you want: `WeatherApp` for instance. Then the wizard asks for a Company Domain. As you are not releasing the app, this field is not very important either, but if you own a domain, you can use that one. Also, choose the location where you want to save the project.
+
+In Android Studio 3, at this point, you find a checkbox that enables Kotlin support. So select it if that is your case.
+
+For the next step, the wizard asks for the minimum API version. I selected API 15 for the sample app, but Kotlin does not have any restrictions regarding the minimum API. Skip any other platform different to `Phone and Tablet` for now.
+
+Finally, we are required to choose an activity template. Select `Empty Activity`. This template generates little code, and it is easier for us to add new logic.
+
+Keep the name of the activities or layouts in the next screen. We will change them later if we need to. Press `Finish` and let Android Studio do its work.
+
+With Android Studio 3 you are done, skip to point 3.4. The next two steps are only required if you had to install the plugin manually.
+
+## 3.2 Convert MainActivity to Kotlin code
+
+An interesting feature that the Kotlin plugin includes is the ability to convert from Java to Kotlin code. As an automated process, it is not perfect, but it may help a lot during your first days until you start getting used to the Kotlin language.
+
+So we are using this in our `MainActivity.java` class. Open the file and select `Code -> Convert Java File to Kotlin File`. Take a look at the differences, so that you start becoming familiar with the language.
+
+You can also copy any Java code into a Kotlin file, and the plugin also converts it.
+
+## 3.3 Configure Kotlin in project
+
+The Kotlin plugin also includes a tool that configures the Gradle files for us. 
+
+Just go to `Tools -> Project -> Configure Kotlin in Project`. Choose the latest Kotlin version, and press OK.
+
+Review the changes. There should be something like this:
+
+{title="build.gradle", lang="groovy"}
+~~~~~~~~
+buildscript {
+    ext.kotlin_version = '1.2.31'
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.1.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+    }
+}
+~~~~~~~~
+
+As you can see, it is creating a variable that saves the current Kotlin version. We need that version number in several places, for instance in the new dependency to the Kotlin plugin. 
+
+It will be useful again in the module `build.gradle`, where the configuration has also added a dependency to the **Kotlin standard library**. Go check it now:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    ...
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+}
+~~~~~~~~
+
+## 3.4 Include some other useful configuration
+
+There are some other extra libraries that we will be using, so take the chance to add them to the `build.gradle`. 
+
+An important one is Anko, a library that uses the power of Kotlin to simplify some tasks in Android. We will use more modules of Anko later on, but for now, it is enough to add `anko-common`. This library is split into several smaller ones so that we include in the project only the parts we require.
+
+Let's go to the main one first, and update the buildscript by adding two new variables for the support libraries as well as Anko library (you can also [check the latest version here](https://github.com/Kotlin/anko/releases)). This way, it is easier to modify all the versions in a row, as well as adding new libraries that use the same version without having to change it everywhere:
+
+{title="build.gradle", lang="groovy"}
+~~~~~~~~
+buildscript {
+    ext.support_version = '27.1.0'
+    ext.kotlin_version = '1.2.31'
+    ext.anko_version = '0.10.4'
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.1.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+        google()
+    }
+}
+~~~~~~~~
+
+If you are using Android Studio 2.3, you also need to add the Google repository as you can see above. Android Studio 3 does it for you.
+
+Let's then add the **Anko** library dependency to the module file, update the **AppCompat** to use our variable, and apply the **Kotlin Android Extensions** plugin:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: 'kotlin-android-extensions'
+
+android {
+    ...
+}
+
+dependencies {
+    implementation "com.android.support:appcompat-v7:$support_version"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation "org.jetbrains.anko:anko-common:$anko_version"
+}
+~~~~~~~~
+
+With these changes, we should be ready to start.
+
+## 3.5 Test that everything works
+
+We are going to add some code to check that Kotlin Android Extensions are fully functional. I am not explaining much about it yet, but I want to be sure this is working for you.
+
+First, go to `activity_main.xml` and set an id for the `TextView`:
+
+{title="activity_main.xml", lang="xml"}
+~~~~~~~~
+<TextView
+    android:id="@+id/message"
+    android:text="@string/hello_world"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"/>
+~~~~~~~~
+
+At `onCreate`, try to write the id you previously chose (`message` in this example) for the `TextView`:
+
+{title="MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    setContentView(R.layout.activity_main)
+    message.text = "Hello Kotlin!"
+}
+~~~~~~~~
+
+Do you see the magic? You could access the view without finding it or using third-party libraries. *Kotlin Android Extensions*  is a plugin that comes included in the main Kotlin one, and that is its primary purpose. Be patient; I shall show you how to use it properly soon.
+
+You will also see that a synthetic import was added automatically to the activity, but we are not covering it yet:
+
+{title="MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+import kotlinx.android.synthetic.main.activity_main.*
+~~~~~~~~
+
+Thanks to Kotlin interoperability with Java, we can use setters and getters methods from Java libraries as a property in Kotlin. We will talk about properties later too, but just notice that we can use `message.text` instead of `message.setText` for free. The compiler uses the real Java methods, so there is no performance overhead when using it.
+
+Now run the app and check that everything is working fine. Review that the message `TextView` is showing the new content. If you have any doubts or want to revise some code, take a look at [Kotlin for Android Developers repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-3). I created a branch for each chapter when the new content involves modifications in code, so be sure to review it to check all the changes.
+
+Next chapters cover some of the new things you could see in the converted `MainActivity`. Once you understand the slight differences between Java and Kotlin, you will be able to write new code by yourself without any hassle.

@@ -1,0 +1,128 @@
+# 15 Kotlin Android Extensions
+
+Another interesting plugin the Kotlin team has developed to make Android development easier is called **Kotlin Android Extensions**. The plugin automatically creates a set of properties that give direct access to all the views in the XML. This way we don't need to explicitly find all the views in the layout before starting using them.
+
+The names of the properties are taken from the ids of the views, so we must be careful when choosing those names because they will be an important part of our classes. The type of these properties is also taken from the XML, so there is no need to do any extra castings.
+
+The good thing about Kotlin Android Extensions is that it doesn't add any extra libraries to our code. It just consists of a plugin that generates the code it needs to work only when it's required, just by using the standard Kotlin library.
+
+How does it work under the hood? The plugin substitutes any properties call into a function that requests the view, and a caching function that prevents from having to find the view every time a property is called. Be aware that this caching mechanism only works if the receiver is an Activity or a Fragment. If it's used in an extension function, the caching will be skipped, because the plugin won't be able to add the required code.
+
+## 15.1 How to use Kotlin Android Extensions
+
+If you remember, the project is already prepared to use Kotlin Android Extensions. When we were creating the project, we already added the dependency to `app` `build.gradle`:
+
+{lang="groovy"}
+~~~~~~~~
+...
+apply plugin: 'kotlin-android-extensions'
+~~~~~~~~
+
+The only thing required by the plugin is the addition of a special "synthetic" `import` to the class that makes use of this feature. We have a couple of ways to use it:
+
+### Android Extensions for Activities or Fragments
+
+This is the regular way to use it. The views can be accessed as if they were properties of the activity or fragment. The names of the properties are the ids of the views in the XML.
+
+The `import` we need to use will start with `kotlinx.android.synthetic` plus the name of the XML we want to bind to the activity. We also have to specify the build variant. But don't worry, the IDE will be usually smart enough to do the import for you:
+
+~~~~~~~~
+import kotlinx.android.synthetic.main.activity_main.*
+~~~~~~~~
+
+From that moment, we can access the views after `setContentView` is called. New Android Studio activity templates now include nested layouts, by using the `include` tag. It's important to know that we'll need to add a synthetic import for any XMLs we use:
+
+~~~~~~~~
+import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.android.synthetic.main.content_main.*
+~~~~~~~~
+
+### Android Extensions for Views
+
+The previous use is rather restrictive, because there are many other parts of the code where we could need to access the views inside an XML. For example, a custom view or an adapter. For these cases, there is an alternative which will bind the views of the XML to another view. The only difference is the required `import`:
+
+~~~~~~~~
+import kotlinx.android.synthetic.main.view_item.view.*
+~~~~~~~~
+
+If we were in an adapter, for instance, we could now access the properties of the view inside the `ViewHolder` just doing this:
+
+~~~~~~~~
+itemView.textView.text = "Hello"
+~~~~~~~~
+
+Take into account that, as in extension functions, the plugin won't cache the views here. So if your layout is very complex, it might be worth doing this yourself inside the `ViewHolder`. Otherwise, it could affect the `RecyclerView` performance.
+
+## 15.2 Refactoring our code
+
+Now it's time to change our code so that we can start making use of Kotlin Android Extensions. The modifications are fairly simple.
+
+Let's start with `MainActivity`. We are currently only using a `forecast_list` view, which is in fact a `RecyclerView`. But we can clean this code a little bit.
+
+As said before, we use the id to access the views, so I'm changing the id of the `RecyclerView` so that it doesn't use underscores, but a more appropriate name for a Kotlin variable. The XML results into this:
+
+{lang="xml"}
+~~~~~~~~
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <android.support.v7.widget.RecyclerView
+        android:id="@+id/forecastList"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+</FrameLayout>
+~~~~~~~~
+
+And now we can just get rid of the `find` line. Start writing the id of the view, and the autocomplete should help you add the import. Otherwise, you'll need to add this:
+
+~~~~~~~~
+import kotlinx.android.synthetic.main.activity_main.*
+~~~~~~~~
+
+This is the resulting code:
+
+~~~~~~~~
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    setContentView(R.layout.activity_main)
+
+    forecastList.layoutManager = LinearLayoutManager(this)
+    ...
+}
+~~~~~~~~
+
+The simplification was minimal because this layout is very simple. But the `ForecastListAdapter` can also benefit from the use of this plugin. Here, we can use the mechanism to bind the properties into a view, which will help us to remove all the `find` code inside the `ViewHolder`.
+
+This is the synthetic import you will need for `item_forecast`:
+
+~~~~~~~~
+import kotlinx.android.synthetic.main.item_forecast.view.*
+~~~~~~~~
+
+And now we can find the views from `itemView` property inside the `ViewHolder`. In fact you can use those properties over any other views, but it will obviously crash if the view doesn't contain the requested sub-views.
+
+We don't need to declare properties for the views anymore, we now can just use them:
+
+~~~~~~~~
+class ViewHolder(view: View, val itemClick: (Forecast) -> Unit) :
+        RecyclerView.ViewHolder(view) {
+
+    fun bindForecast(forecast: Forecast) {
+        with(forecast) {
+            Picasso.with(itemView.ctx).load(iconUrl).into(itemView.icon)
+            itemView.date.text = date
+            itemView.description.text = description
+            itemView.maxTemperature.text = "$high"
+            itemView.minTemperature.text = "$low"
+            itemView.setOnItemClickListener { itemClick(this) }
+        }
+    }
+}
+~~~~~~~~
+
+Our layout is pretty simple and it won't probably affect performance. But don't forget what we talked in the section above: this is not caching the views, so every bind will be doing `findViewById` under the hood for all its views.
+
+Kotlin Android Extensions plugin helps us reduce some more boilerplate and minimize the code required to access our views. Check the latest changes [in the repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-15).

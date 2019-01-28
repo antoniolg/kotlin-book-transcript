@@ -1,0 +1,59 @@
+# 14 Visibility Modifiers
+
+Modifiers are a bit different in Kotlin from how we use them in Java. The default modifier in this language is `public`, which saves a lot of time and characters. Here it is the long explanation: how do visibility modifiers work in Kotlin?
+
+## 14.1 Modifiers
+
+### private
+
+The `private` modifier is the most restrictive we can use. It indicates it is visible in its file. So if we declare a class as `private`, we are not able to use it outside the file where it was defined.
+
+On the other hand, if we use `private` inside a class, the access is restricted to that class. Even classes that extend it cannot use it. 
+
+So first level classes, objects, interfaces... (known as package members) declared as `private` are only visible inside the file where they are declared, while everything defined inside a class or interface is only visible by that class or interface.
+
+### protected
+
+This modifier only applies to members of a class or an interface. A package member cannot be `protected`. Inside a member, it works the same way as in Java: it can be used by the member itself and the members that extend it (for instance, a class and its subclasses).
+
+### internal
+
+An internal member is visible inside the whole module if it is a package member. If it is a member of another scope, it depends on the visibility of the scope. For instance, if we write a private class, the access to an `internal` function is limited to the visibility of the class.
+
+We can use internal classes from any other class in the same module, but not from another module.
+
+I> ### What is a module?
+I>
+I> According to Jetbrains definition, a module is a discrete unit of functionality which you can compile, run, test and debug independently. It refers to the Android Studio modules we can create to split our project into different blocks. In Eclipse, these modules would refer to the projects inside a workspace.
+
+### public
+
+As you may guess, this is the less restrictive modifier. ** It is the default modifier**, and a member declared as `public` is visible anywhere, only restricted by its scope. A public member defined in a private class will not be visible outside the scope where the class is visible.
+
+## 14.2 Constructors
+
+By default, all constructors are `public`, which means they can be used from any scope where their class is visible. If we want to restrict the visibility of a constructor, we can apply modifiers to it with this specific syntax:
+
+~~~~~~~~
+class C private constructor(a: Int) { ... }
+~~~~~~~~
+
+## 14.3 Reviewing our code
+
+We already made use of the `public` default modifier, and latest versions of the Kotlin plugin also detect when an argument can be private. For instance, in `RequestForecastCommand`, we made the `zipCode` property private. 
+
+~~~~~~~~
+class RequestForecastCommand(private val zipCode: String)
+~~~~~~~~
+
+Besides, in Kotlin we do not need to specify the return type of a function if the compiler can infer it. An example of how we can get rid of the returning types:
+
+~~~~~~~~
+data class ForecastList(...) {
+    operator fun get(position: Int) = dailyForecast[position]
+}
+~~~~~~~~
+
+The typical situations where we can get rid of the return type are when we assign the value to a function or a property using `equals` (=) instead of writing a code block.
+
+The rest of the modifications are pretty straightforward. You can review them [in the repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-14).

@@ -1,0 +1,247 @@
+# 25 Generics
+
+Generic programming consists of writing algorithms without the need of specifying the exact type the code is going to use. That way, we can create functions or types that only differ in the set of types they use, improving code reusability. These units of code are known as generics, and they exist in many languages, including Java and Kotlin.
+
+In Kotlin, generics are even more important, because the high presence of regular and extension functions increments the number of times that generics are of some use for us. Though we have been using them blindly throughout the book, generics are usually one of the trickiest parts of any language, so I am trying to explain it in the simplest possible way so that main ideas are clear enough.
+
+## 25.1 Basics
+
+For instance, we can create a class which specifies a generic type:
+
+~~~~~~~~
+class TypedClass<T>(parameter: T) {
+    val value: T = parameter
+}
+~~~~~~~~
+
+This class now can be instantiated using any type, and the parameter will use the type in the definition. We could do:
+
+~~~~~~~~
+val t1 = TypedClass<String>("Hello World!")
+val t2 = TypedClass<Int>(25)
+~~~~~~~~
+
+But Kotlin is all about simplicity and boilerplate reduction, so if the compiler can infer the type of the parameter, we do not even need to specify it:
+
+~~~~~~~~
+val t1 = TypedClass("Hello World!")
+val t2 = TypedClass(25)
+val t3 = TypedClass<String?>(null)
+~~~~~~~~
+
+As the third object is receiving a null reference, the type still needs to be specified because the compiler cannot infer it.
+
+We can go beyond and, as in Java, reduce the types that can be used in a generic class by setting it in the definition. For instance, if we want to restrict the previous class to non-nullable types, we do:
+
+~~~~~~~~
+class TypedClass<T : Any>(parameter: T) {
+    val value: T = parameter
+}
+~~~~~~~~
+
+If you compile previous code, you will see that `t3` now throws an error. Nullable types are not allowed anymore. But restrictions can be obviously more strict. What if we want to accept only classes that extend `Context`? Easy:
+
+~~~~~~~~
+class TypedClass<T : Context>(parameter: T) {
+    val value: T = parameter
+}
+
+val t1 = TypedClass(activity)
+val t2 = TypedClass(context)
+val t3 = TypedClass(service)
+~~~~~~~~
+
+Now every class which extends `Context` can be used as the type of our class. The rest of types are not allowed.
+
+Of course, types are also allowed in functions. We can build generic functions quite easily:
+
+~~~~~~~~
+fun <T> typedFunction(item: T): List<T> {
+    ...
+}
+~~~~~~~~
+
+## 25.2 Variance
+
+This is really one of the trickiest parts to understand. In Java, there is a problem when we use generic types. Logic says that `List<String>` should be able to be casted to `List<Object>` because it is less restrictive. But take a look at this example:
+
+{lang="java"}
+~~~~~~~~
+List<String> strList = new ArrayList<>();
+List<Object> objList = strList;
+objList.add(5);
+String str = objList.get(0);
+~~~~~~~~
+
+If the Java compiler allowed us to do this, we could add an `Integer` to an `Object` list, and this would crash at some point. That is why wildcards were added to the language. Wildcards increase flexibility while limiting this problem.
+
+If we add '`? extends Object`' we are using **covariance**, which means that we can deal with any object that uses a type that is more restrictive than `Object`, but we can only do `get` operations safely. If we want to copy a collection of `String`s into a collection of `Object`s, we should be allowed, right?
+
+Then, if we have:
+
+{lang="java"}
+~~~~~~~~
+List<String> strList = ...;
+List<Object> objList = ...;
+objList.addAll(strList);
+~~~~~~~~
+
+This is possible because the definition of `addAll()` in `Collection` interface is something like:
+
+{lang="java"}
+~~~~~~~~
+List<String> 
+interface Collection<E> ... {
+  void addAll(Collection<? extends E> items);
+}
+~~~~~~~~
+
+Otherwise, without the wildcard, we would not be allowed to use a `String` list with this method. The opposite, of course, would fail. We cannot use `addAll()` to add a list of `Object`s to a list of `String`s. As we are only getting the items from the collection we use in that method, it is a perfect example of covariance.
+
+On the other hand, we can find **contravariance**, which is just the opposite situation. Following with the `Collection` example, if we want to add items to a `Collection` we are passing as a parameter, we could add objects with a more restrictive type into a more generic collection. For instance, we could add `String`s to an `Object` list:
+
+{lang="java"}
+~~~~~~~~
+void copyStrings(Collection<? super String> to, Collection<String> from) {
+    to.addAll(from);
+}
+~~~~~~~~
+
+The only restriction we have to add `String`s to another collection is that the collection accepts `Object`s that are `String`s or parent classes.
+
+But wildcards have some limitations. Wildcards define **use-site variance**, which means we need to declare them where we use them. This implies adding boilerplate every time we declare a more generic variable. 
+
+Let's see an example. Using a class similar to the one we had before:
+
+{lang="java"}
+~~~~~~~~
+public class TypedClass<T> {
+    public T doSomething(){
+        ...
+    }
+}
+~~~~~~~~
+
+This code will not compile:
+
+{lang="java"}
+~~~~~~~~
+TypedClass<String> t1 = new TypedClass<>();
+TypedClass<Object> t2 = t1;
+~~~~~~~~
+
+Though it really does not make sense, because we could still keep calling all the methods of the class, and nothing would break. We need to specify that the type can have a more flexible definition.
+
+{lang="java"}
+~~~~~~~~
+TypedClass<String> t1 = new TypedClass<>();
+TypedClass<? extends String> t2 = t1;
+~~~~~~~~
+
+The use of wildcards, in this case, makes things more difficult to understand, and adds some extra boilerplate.
+
+On the other hand, Kotlin deals with it more naturally by using **declaration-site variance**. In Kotlin, we specify that we can deal with less restrictive situations when defining the class or interface, and then we can use it blindly everywhere.
+
+So let's see how it looks. Instead of long wildcards, Kotlin uses **_out_** for covariance and **_in_**  for contravariance. In this case, as our class is producing objects that can be saved into less restrictive variables, we are using covariance. We can define this in the class declaration directly:
+
+~~~~~~~~
+class TypedClass<out T>() {
+    fun doSomething(): T {
+        ...
+    }
+}
+~~~~~~~~
+
+And that is all we need. Now, the same example that would not compile in Java is perfectly possible in Kotlin:
+
+~~~~~~~~
+val t1 = TypedClass<String>()
+val t2: TypedClass<Any> = t1
+~~~~~~~~
+
+If you were already used to these concepts, I am sure you can use **_in_** and **_out_** in Kotlin without any hassle. Otherwise, it requires a little practice and a good understanding of these concepts.
+
+## 25.3 Generics examples
+
+After the theory, let's move to some practical functions that will make our lives easier. Instead of reinventing the wheel, I am using three functions that are included in Kotlin standard library. These functions let us do remarkable things with just a generic implementation. They can inspire you to create your own functions.
+
+### let
+`let` is a simple function that can be called by any object. It receives a function that takes the object as a parameter and returns the value that this function returns. It is handy to deal with nullable objects, for instance. Here it is the definition:
+
+~~~~~~~~
+inline fun <T, R> T.let(f: (T) -> R): R = f(this)
+~~~~~~~~
+
+It uses two generic types: `T` and `R`. The first type is defined by the calling object, and it is also the type that the lambda receives as the input argument. The second one is the result of the function.
+
+How can we use it? You may remember that, when we were retrieving data from a data source, the result could be null. We then returned a result mapped to the domain model if it was not null, or just a null reference otherwise:
+
+{title="data/db/ForecastDb.kt", lang="kotlin"}
+~~~~~~~~
+if (forecast != null) dataMapper.convertDayToDomain(forecast) else null
+~~~~~~~~
+
+This can be improved. We should not need to deal with nullable types that way. We can avoid it by using `let`:
+
+{title="data/db/ForecastDb.kt", lang="kotlin"}
+~~~~~~~~
+forecast?.let { dataMapper.convertDayToDomain(it) }
+~~~~~~~~
+
+`let` function is only executed if `forecast` is not null thanks to '`?.`' operator. It returns `null` otherwise. Just what we were trying to achieve.
+
+### with
+We have talked a lot about this function during the book. `with` receives an object and a lambda that behaves as an extension function. So we can use `this` inside the lambda to refer to the object. It also returns an object defined in the last line of the function.
+
+~~~~~~~~
+inline fun <T, R> with(receiver: T, f: T.() -> R): R = receiver.f()
+~~~~~~~~
+
+Generics work the same way here: `T` stands for the receiver type and `R` for the result. As you can see, the lambda is defined as an extension function by using this declaration: `f: T.() -> R`. That is why we can then call `receiver.f()`.
+
+We have several examples throughout the app:
+
+{title="data/db/DbDataMapper.kt", lang="kotlin"}
+~~~~~~~~
+fun convertFromDomain(forecast: ForecastList) = with(forecast) {
+    val daily = dailyForecast.map { convertDayFromDomain(id, it) }
+    CityForecast(id, city, country, daily)
+}
+~~~~~~~~
+
+### apply
+It may look very similar to `with` function, but the idea is a bit different. `apply` can be used to avoid the creation of builders, because the object that calls the function can initialize itself the way it needs, and the `apply` function returns the same object:
+
+~~~~~~~~
+inline fun <T> T.apply(f: T.() -> Unit): T { f(); return this }
+~~~~~~~~
+
+We only need one generic type here, because the object that calls the function is also the returned value. A nice simple example would be:
+
+~~~~~~~~
+val textView = TextView(context).apply {
+    text = "Hello"
+    hint = "Hint"
+    textColor = android.R.color.white
+}
+~~~~~~~~
+
+It creates a `TextView`, modifies some properties, and assigns it to a variable. Everything in a simple, readable and compact syntax. Let's use it in our current code. In `ToolbarManager`, we were doing this to create the navigation drawable:
+
+~~~~~~~~
+private fun createUpDrawable() = with(DrawerArrowDrawable(toolbar.ctx)) {
+    progress = 1f
+    this
+}
+~~~~~~~~
+
+Using `with` and returning `this` is clearly something that can be done easier by using `apply`:
+
+{title="ui/activities/ToolbarManager.kt", lang="kotlin"}
+~~~~~~~~
+private fun createUpDrawable() = DrawerArrowDrawable(toolbar.ctx).apply { 
+    progress = 1f 
+}
+~~~~~~~~
+
+You can review some more little improvements in Kotlin for Android Developers [repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-25).

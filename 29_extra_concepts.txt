@@ -1,0 +1,131 @@
+# 29 Extra concepts
+
+Throughout this book, we have talked about the most important concepts of the Kotlin language. But we did not use some of them when implementing the app, and I would not want to let them out of these pages. In this chapter, I will review some unrelated features that you could be helpful for you when you develop your next Android app using Kotlin.
+
+## 29.1 Nested classes
+
+As in Java, we can define classes inside other classes. By default, an inner class will not be able to access the members of the outer class (it would behave as a static class in Java):
+
+~~~~~~~~
+class Outer {
+  private val bar: Int = 1
+  class Nested {
+    fun foo() = 2
+  }
+}
+
+val demo = Outer.Nested().foo() // == 2
+~~~~~~~~
+
+This is what we used for instance for the `ViewHolder` inside the `ForecastListAdapter`. If we want to access to the members of the outer class, we need to declare it as an **`inner`** class:
+
+~~~~~~~~
+class Outer {
+  private val bar: Int = 1
+  inner class Inner {
+    fun foo() = bar
+  }
+}
+
+val demo = Outer().Inner().foo() // == 1
+~~~~~~~~
+
+## 29.2 Enum classes
+
+Kotlin also provides a way to implement **`enum`**:
+
+~~~~~~~~
+enum class Day {
+    SUNDAY, MONDAY, TUESDAY, WEDNESDAY,
+    THURSDAY, FRIDAY, SATURDAY
+}
+~~~~~~~~
+
+Enums can have parameters, which are declared in the constructor:
+
+~~~~~~~~
+enum class Icon(val res: Int) {
+    UP(R.drawable.ic_up),
+    SEARCH(R.drawable.ic_search),
+    CAST(R.drawable.ic_cast)
+}
+
+val searchIconRes = Icon.SEARCH.res
+~~~~~~~~
+
+Enums can be requested by the `String` that matches the name, and we can also get an `Array` that includes all the values of an Enum, so that we can iterate over them.
+
+~~~~~~~~
+val search: Icon = Icon.valueOf("SEARCH")
+val iconList: Array<Icon> = Icon.values
+~~~~~~~~
+
+Besides, each Enum constant has functions to obtain its name and the position in the declaration:
+
+~~~~~~~~
+val searchName: String = Icon.SEARCH.name
+val searchPosition: Int = Icon.SEARCH.ordinal
+~~~~~~~~
+
+Enums implement `Comparable` based on the ordinal, so it is easy to compare them.
+
+## 29.3 Sealed classes
+
+Sealed classes are used to represent restricted class hierarchies, which means that the number of classes that extend a sealed class is restricted. It is similar to an Enum in the sense that the compiler is aware of the number of subtypes a sealed class has. The difference is that enum instances are unique, while sealed classes can have multiple instances which can contain different states.
+    
+We could implement, for instance, something similar to the `Option` class: a type that prevents the use of `null` by returning a `Some` class when the object contains a value or the `None` instance when it is empty:
+
+~~~~~~~~
+sealed class Option<out T>
+object None : Option<Nothing>()
+data class Just<out T>(val value: T) : Option<T>()
+~~~~~~~~
+
+The good thing about sealed classes is that when they are used in a `when` expression, we can check all the options and will not need to add the `else` clause. Also, if at some point we add a new subclass, the compiler will warn us about the places where we should be dealing with it.
+
+~~~~~~~~
+val result = when (option) {
+    None -> "Empty"
+    is Just -> "Contains a value"
+}
+~~~~~~~~
+
+##29.4 Exceptions
+
+In Kotlin, all exceptions implement `Throwable`, have a message and are unchecked. Consequently, we are not required to use `try/catch` on any of them. That is not the case in Java, where methods that throw `IOException`, for instance, need to be surrounded by a `try/catch` block. Time has shown that checked exceptions were not a good idea. People like [Bruce Eckel](http://www.mindview.net/Etc/Discussions/CheckedExceptions), [Rod Waldhoff](http://radio-weblogs.com/0122027/stories/2003/04/01/JavasCheckedExceptionsWereAMistake.html) or [Anders Hejlsberg](http://www.artima.com/intv/handcuffs.html) can give you a better perspective on it.
+
+The way to throw an exception is very similar to Java:
+
+~~~~~~~~
+throw MyException("Exception message")
+~~~~~~~~
+
+And `try` expression is identical too:
+
+~~~~~~~~
+try {
+  // some code
+}
+catch (e: SomeException) {
+  // handler
+}
+finally {
+  // optional finally block
+}
+~~~~~~~~
+
+Both `throw` and `try` are expressions in Kotlin, which allows to assign them to a variable. This is useful when dealing with edge cases:
+
+~~~~~~~~
+val s = when(x){
+    is Int -> "Int instance"
+    is String -> "String instance"
+    else -> throw UnsupportedOperationException("Not valid type")
+}
+~~~~~~~~
+
+or
+
+~~~~~~~~
+val s = try { x as String } catch(e: ClassCastException) { null }
+~~~~~~~~

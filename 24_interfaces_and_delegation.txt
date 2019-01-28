@@ -1,0 +1,329 @@
+# 24 Interfaces and Delegation
+
+## 24.1 Interfaces
+
+Interfaces in Kotlin are more powerful than in Java 7. If you have worked with Java 8, similarities are much closer there. In Kotlin, we can use interfaces the same way as in Java. Imagine we have some animals, and some of them can fly. This is the interface we could have for flying animals:
+
+~~~~~~~~
+interface FlyingAnimal {
+    fun fly()
+}
+~~~~~~~~
+
+Both birds and bats can fly by moving their wings. So let's create a couple of classes for them:
+
+~~~~~~~~
+class Bird : FlyingAnimal {
+    val wings: Wings = Wings()
+    override fun fly() = wings.move()
+}
+
+class Bat : FlyingAnimal {
+    val wings: Wings = Wings()
+    override fun fly() = wings.move()
+}
+~~~~~~~~
+
+When a couple of classes extend from an interface, it is very typical they both share the same implementation. However, Java 7 interfaces can only define the behavior, but not implement it.
+
+Kotlin interfaces, on the other hand, can implement functions. The only difference from a class is that they are stateless, so the properties that need a backing field need to be overridden by the class. The class is in charge of saving the state of interface properties.
+
+We can make the interface implement the `fly` function:
+
+~~~~~~~~
+interface FlyingAnimal {
+    val wings: Wings
+    fun fly() = wings.move()
+}
+~~~~~~~~
+
+As mentioned, classes need to override the property:
+
+~~~~~~~~
+class Bird : FlyingAnimal {
+    override val wings: Wings = Wings()
+}
+
+class Bat : FlyingAnimal {
+    override val wings: Wings = Wings()
+}
+~~~~~~~~
+
+And now both birds and bats can fly:
+
+~~~~~~~~
+val bird = Bird()
+val bat = Bat()
+
+bird.fly()
+bat.fly()
+~~~~~~~~
+
+## 24.2 Delegation
+
+The [delegation](https://en.wikipedia.org/wiki/Delegation_pattern) is a handy pattern that can be used to extract responsibilities from a class. The delegation pattern is supported natively by Kotlin, so it prevents the need of calling the delegate. The delegator just needs to specify which instance implements the interface.
+
+In our previous example, we can specify how the animal flies through the constructor, instead of implementing it. For instance, a flying animal that uses wings to fly can be implemented this way:
+
+~~~~~~~~
+interface CanFly {
+    fun fly()
+}
+
+class Bird(f: CanFly) : CanFly by f
+~~~~~~~~
+
+We can indicate that a bird can fly by using the interface, but the way the bird uses to fly is defined by a delegate that comes through the constructor, so we can have different birds with different flying methods. The way an animal with wings flies is defined in another class:
+
+~~~~~~~~
+class AnimalWithWings : CanFly {
+    val wings: Wings = Wings()
+    override fun fly() = wings.move()
+}
+~~~~~~~~
+
+An animal with wings moves its wings to be able to fly. So now we can create a bird that flies using wings:
+
+~~~~~~~~
+val birdWithWings = Bird(AnimalWithWings())
+birdWithWings.fly()
+~~~~~~~~
+
+But now wings can be used with other animals that are not birds. If we assume that bats always use wings, we could instantiate the object directly where we specify the delegation:
+
+~~~~~~~~
+class Bat : CanFly by AnimalWithWings()
+...
+val bat = Bat()
+bat.fly()
+~~~~~~~~
+
+## 24.3 Implementing an example in our App
+
+Interfaces can be used to extract common code from classes which have some similar behavior. For instance, we can create an interface that deals with the toolbar of the app. Both `MainActivity` and `DetailActivity` share similar code that deals with the toolbar.
+
+But first, some changes need to be done to start using a toolbar included in the layout instead of the standard `ActionBar`. The first thing will be extending a `NoActionBar` theme. That way, the toolbar is not included automatically:
+
+{title="values/styles.xml", lang="xml"}
+~~~~~~~~
+<style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <item name="colorPrimary">#ff212121</item>
+    <item name="colorPrimaryDark">@android:color/black</item>
+</style>
+~~~~~~~~
+
+We are using a light theme. Next, let's create a toolbar layout that we can include later in some other layouts:
+
+{title="layout/toolbar.xml", lang="xml"}
+~~~~~~~~
+<android.support.v7.widget.Toolbar
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/toolbar"
+    android:layout_width="match_parent"
+    android:layout_height="?attr/actionBarSize"
+    android:background="?attr/colorPrimary"
+    android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+    app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
+~~~~~~~~
+
+The toolbar specifies its background, a dark theme for itself and a light theme for the popups it generates (the overflow menu for instance). We get then the same theme we already had: a light theme with dark Action Bar.
+
+Next step will be modifying the `MainActivity` layout to include the toolbar:
+
+{title="layout/activity_main.xml", lang="xml"}
+~~~~~~~~
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <android.support.v7.widget.RecyclerView
+        android:id="@+id/forecastList"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingTop="?attr/actionBarSize"/>
+
+    <include layout="@layout/toolbar"/>
+
+</FrameLayout>
+~~~~~~~~
+
+Now that we have added the toolbar to the layout, we can start using it. We are creating an interface that will let us:
+
+- Change the title
+- Specify whether it shows the up navigation action or not
+- Animate the toolbar when scrolling
+- Assign the same menu to all activities and an event for the actions
+
+So let's define the `ToolbarManager`:
+
+{title="ui/activities/ToolbarManager.kt", lang="kotlin"}
+~~~~~~~~
+interface ToolbarManager {
+    val toolbar: Toolbar
+    ...
+}
+~~~~~~~~
+
+It needs a toolbar property. Interfaces are stateless, so the property can be defined, but no value can be assigned. Classes that implement it require overriding the property.
+
+On the other hand, we can implement stateless properties without the need of being overridden. That is, properties that can work without using a backing field. An example would be a property which deals with the toolbar title:
+
+{title="ui/activities/ToolbarManager.kt", lang="kotlin"}
+~~~~~~~~
+var toolbarTitle: String
+    get() = toolbar.title.toString()
+    set(value) {
+        toolbar.title = value
+    }
+~~~~~~~~
+
+As the property just uses the toolbar, it does not need to save additional state.
+
+We are now creating a new function that initializes the toolbar, by inflating a menu and setting a listener:
+
+{title="ui/activities/ToolbarManager.kt", lang="kotlin"}
+~~~~~~~~
+fun initToolbar() {
+    toolbar.inflateMenu(R.menu.menu_main)
+    toolbar.setOnMenuItemClickListener {
+        when (it.itemId) {
+            R.id.action_settings -> App.instance.toast("Settings")
+            else -> App.instance.toast("Unknown option")
+        }
+        true
+    }
+}
+~~~~~~~~
+
+We can also add a function that enables the navigation icon in the toolbar, sets an arrow icon and a listener that will be fired when the icon is pressed:
+
+{title="ui/activities/ToolbarManager.kt", lang="kotlin"}
+~~~~~~~~
+fun enableHomeAsUp(up: () -> Unit) {
+    toolbar.navigationIcon = createUpDrawable()
+    toolbar.setNavigationOnClickListener { up() }
+}
+
+private fun createUpDrawable() = 
+     DrawerArrowDrawable(toolbar.ctx).apply { progress = 1f }
+~~~~~~~~
+
+The function receives the listener, creates the up drawable by using the [DrawerArrowDrawable](https://developer.android.com/reference/android/support/v7/graphics/drawable/DrawerArrowDrawable.html) on its final state (when the arrow is already showing) and assigns the listener to the toolbar.
+
+Finally, the interface provides a function that allows the toolbar to be attached to a scroll, and animates the toolbar depending on the direction of the scroll. The toolbar will be hidden while we are scrolling down and displayed again when scrolling up:
+
+{title="ui/activities/ToolbarManager.kt", lang="kotlin"}
+~~~~~~~~
+fun attachToScroll(recyclerView: RecyclerView) {
+    recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        override fun onScrolled(recyclerView: RecyclerView?, dx: Int, dy: Int) {
+            if (dy > 0) toolbar.slideExit() else toolbar.slideEnter()
+        }
+    })
+}
+~~~~~~~~
+
+Let's create a couple of extension functions that animate the views in and out of the screen. They check if the animation has not been previously performed. That way it prevents the view from being animated every time the scroll varies:
+
+{title="extensions/ViewExtensions.kt", lang="kotlin"}
+~~~~~~~~
+fun View.slideExit() {
+    if (translationY == 0f) animate().translationY(-height.toFloat())
+}
+
+fun View.slideEnter() {
+    if (translationY < 0f) animate().translationY(0f)
+}
+~~~~~~~~
+
+After implementing the toolbar manager, it is time to use it in the `MainActivity`, which now must implement the interface:
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+class MainActivity : AppCompatActivity(), ToolbarManager {
+    ...
+}
+~~~~~~~~
+
+We first specify the toolbar property. We can implement a lazy find so that the toolbar will be already inflated by the time we use it:
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+override val toolbar by lazy { find<Toolbar>(R.id.toolbar) }
+~~~~~~~~
+
+`MainActivity` will initialize the toolbar, attach to the `RecyclerView` scroll and modify the toolbar title:
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    setContentView(R.layout.activity_main)
+    initToolbar()
+
+    forecastList.layoutManager = LinearLayoutManager(this)
+    attachToScroll(forecastList)
+
+    doAsync {
+        val result = RequestForecastCommand(94043).execute()
+        uiThread {
+            val adapter = ForecastListAdapter(result) {
+                startActivity<DetailActivity>(DetailActivity.ID to it.id,
+                        DetailActivity.CITY_NAME to result.city)
+            }
+            forecastList.adapter = adapter
+            toolbarTitle = "${result.city} (${result.country})"
+        }
+    }
+}
+~~~~~~~~
+
+`DetailActivity` also needs some layout modifications:
+
+{title="layout/activity_detail.xml", lang="xml"}
+~~~~~~~~
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include layout="@layout/toolbar"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingTop="@dimen/activity_vertical_margin"
+        android:paddingLeft="@dimen/activity_horizontal_margin"
+        android:paddingRight="@dimen/activity_horizontal_margin"
+        tools:ignore="UseCompoundDrawables">
+       ....
+    </LinearLayout>
+
+</LinearLayout>
+~~~~~~~~
+
+The `toolbar` property is specified the same way. `DetailActivity` will initialize the toolbar too, set the title and enable the up navigation icon:
+
+{title="ui/activities/DetailActivity.kt", lang="kotlin"}
+~~~~~~~~
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.activity_detail)
+    
+    initToolbar()
+    toolbarTitle = intent.getStringExtra(CITY_NAME)
+    enableHomeAsUp { onBackPressed() }
+    ...
+}
+~~~~~~~~
+
+Interfaces can help us extract common code from classes that share similar behaviors. It can be used as an alternative to composition, which keeps our code better organized and easier to reuse. 
+
+Think where interfaces can help you write better code, and check the new one in the [branch of this chapter](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-24).

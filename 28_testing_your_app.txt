@@ -1,0 +1,340 @@
+# 28 Testing your App
+
+We are reaching the end of this trip. You already learned most Kotlin features throughout this book, but you are probably wondering if you can test your Android Apps using Kotlin exclusively. The answer is: of course!
+
+In Android, we have a couple of different tests: unit and instrumentation tests. This book is not meant to teach you how to write tests; there are entire books dedicated to that matter. My goal in this chapter is to explain how to prepare your environment to be able to write some tests and show you that Kotlin also works fine for testing.
+
+## 28.1 Unit testing
+
+I will not get into discussions about what unit testing means. There are many definitions out there with some slight differences. A general idea could be that unit tests are the tests that validate an individual unit of source code. What a 'unit' involves is left to the reader. For the sake of simplicity, I am defining a unit test as a test that does not need a device to run. The IDE can run the tests and show a result that identifies which tests succeeded and which ones failed.
+
+Unit testing is usually done using the `JUnit` library. So let's add the dependency to the `build.gradle`. As this dependency is only used when running tests, we can use `testImplementation` instead of `implementation`. This way, the library is left out for regular compilations, reducing the size of the APK:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+dependencies {
+    ...
+    testImplementation "junit:junit:4.12"
+}
+~~~~~~~~
+
+Now sync Gradle to get the library included in your project. In old versions of Android Studio, you may need to choose which kind of tests you want to run. Go to the 'Build Variants' tab (you probably have it on the left side of the IDE) and click on 'Test Artifact' dropdown. You should choose 'Unit Tests' there. New Android Studio versions can have both kinds of tests enabled at the same time, so this step is not required.
+
+Another thing you need to do is create a new folder. Below `src`, you already probably have `androidTest` and `main`. Create another one called `test`, and a folder called `java` below. So now you should have a `src/test/java` folder colored in green. This is a good indication that the IDE detected that we are in 'Unit Test' mode and that this folder contains test files.
+
+Let's write a simple test to check everything works properly. Create a new Kotlin class called `SimpleTest` using the proper package (*com.antonioleiva.weatherapp* in my case, but you need to use the main package of your app). Once you have created the new file, write this simple test:
+
+{title="test/SimpleTest.kt", lang="kotlin"}
+~~~~~~~~
+import org.junit.Test
+import kotlin.test.assertTrue
+
+class SimpleTest {
+    @Test
+    fun `unit testing works`() {
+        assertTrue(true)
+    }
+}
+~~~~~~~~
+
+Use the `@Test` annotation to identify the function as a test. Be sure to use `org.unit.Test`. Then add a simple assertion. It only checks that `true` is `true`, which should succeed. 
+
+Did you see how I wrote the name of the function? If you use backquotes, you can provide a readable name for your tests. When tests run in Android Studio, the summary shows texts that are much easier to read. 
+
+You will see that these names show an error. It is because this format is not available for Android code, so it is not available for instrumentation tests. But you can use them without issues in unit tests, so you can disable the inspection just for tests and use it safely.
+
+To execute the tests, right click on the new `java` folder you created below `test`, and choose 'Run All Tests'. When the compilation finishes, it will run the test, and you will see a summary showing the result. You should notice that your test passed.
+
+Now it is time to create some real tests. Everything that deals with the Android framework probably needs an instrumentation test or some extra libraries such as [Robolectric](http://robolectric.org/). Because of that, in these examples, I am testing things that do not use anything from the framework. For instance, I will test the extension function that creates a date `String` from a `Long`.
+
+Create a new file called `ExtensionTests`, and add this tests:
+
+{title="test/ExtensionsTest.kt", lang="kotlin"}
+~~~~~~~~
+class ExtensionsTest {
+    @Test
+    fun `"longToDateString" returns valid value`() {
+        assertEquals("Oct 19, 2015", 1445275635000L.toDateString())
+    }
+
+    @Test
+    fun `"longToDateString" with full format returns valid value`() {
+        assertEquals("Monday, October 19, 2015", 
+            1445275635000L.toDateString(DateFormat.FULL))
+    }
+}
+~~~~~~~~
+
+These tests check that a `Long` instance is properly converted to a `String`. The first one tests the default behavior (which uses `DateFormat.MEDIUM`), while the second one specifies a different format. Run the tests and see that all of them pass. I also recommend you to change something and see how it crashes.
+
+If you are used to testing your apps in Java, you will see there is not much difference here. I have covered a simple example, but from here you can create more complex tests to validate other parts of the app. For instance, we could write some tests for `ForecastProvider`. We can use `Mockito` library to mock some other classes and be able to test the provider independently:
+
+{title="build.gradle", lang="groovy"}
+~~~~~~~~
+buildscript {
+    ...
+    ext.mockito_version = '2.16.0'
+}
+~~~~~~~~
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+dependencies {
+    ...
+    testImplementation "junit:junit:4.12"
+    testImplementation "org.mockito:mockito-core:$mockito_version"
+}
+~~~~~~~~
+
+Now create a `ForecastProviderTest`. We are going to test that a `ForecastProvider` with a `DataSource` that returns something will get a result that is not null. So first we need to mock a `ForecastDataSource`:
+
+{title="test/domain/datasource/ForecastProviderTest.kt", lang="kotlin"}
+~~~~~~~~
+val ds = mock(ForecastDataSource::class.java)
+`when`(ds.requestDayForecast(0)).then {
+    Forecast(0, 0, "desc", 20, 0, "url")
+}
+~~~~~~~~
+
+As you see, we need backquotes for `when` function, because `when` is a reserved word in Kotlin. So we need to escape it if we find some Java code that uses it. 
+
+An alternative would be to rename the import:
+
+~~~~~~~~
+import org.mockito.Mockito.`when` as whenever
+
+...
+
+whenever(ds.requestDayForecast(0)).then { ... }
+~~~~~~~~
+
+It is up to you; I will use the backquotes in this case.
+
+Now we create a provider with this data source, and check that the result of the call to that method is not null:
+
+~~~~~~~~
+val provider = ForecastProvider(listOf(ds))
+assertNotNull(provider.requestForecast(0))
+~~~~~~~~
+
+This is the complete test function:
+
+{title="test/domain/datasource/ForecastProviderTest.kt", lang="kotlin"}
+~~~~~~~~
+@Test fun  `data source returns a value`() {
+    val ds = mock(ForecastDataSource::class.java)
+    `when`(ds.requestDayForecast(0)).then {
+        Forecast(0, 0, "desc", 20, 0, "url")
+    }
+
+    val provider = ForecastProvider(listOf(ds))
+    assertNotNull(provider.requestForecast(0))
+}
+~~~~~~~~
+
+If you run this, you will see that it crashes. Thanks to this test, we are detecting we have something wrong in our code. The test is failing because `ForecastProvider` is initializing `SOURCES` inside its companion object before it is used. We can add some sources to the `ForecastProvider` through the constructor, and this static list would never be used, so it should be lazy loaded:
+
+{title="domain/datasource/ForecastProvider.kt", lang="kotlin"}
+~~~~~~~~
+companion object {
+    val DAY_IN_MILLIS = 1000 * 60 * 60 * 24
+    val SOURCES by lazy { listOf(ForecastDb(), ForecastServer()) }
+}
+~~~~~~~~
+
+If you now run again, you will see it is now passing all the tests.
+
+We can also test, for instance, that when a source returns null, it will iterate over the next source to get a result:
+
+{title="test/domain/datasource/ForecastProviderTest.kt", lang="kotlin"}
+~~~~~~~~
+@Test fun `empty database returns server value`() {
+    val db = mock(ForecastDataSource::class.java)
+
+    val server = mock(ForecastDataSource::class.java)
+    `when`(server.requestForecastByZipCode(
+            any(Long::class.java), any(Long::class.java)))
+            .then {
+                ForecastList(0, "city", "country", listOf())
+            }
+
+    val provider = ForecastProvider(listOf(db, server))
+
+    assertNotNull(provider.requestByZipCode(0, 0))
+}
+~~~~~~~~
+
+As you see, the simple dependency inversion we solved by using default values for arguments is enough to let us implement some simple unit tests. There are many more things we could test about this provider, but this example is enough to show that we can use the basic unit testing tools.
+
+## 28.2 Mocking closed classes
+
+In Kotlin, everything is closed by default, so you may find yourself in trouble when you want to mock a class. Mockito cannot mock closed (final) classes.
+
+So imagine we want to test `RequestDayForecastCommand`, and check that when its `execute()` method is called, the provider is also called. We could do this:
+
+{title="test/domain/commands/RequestDayForecastCommandTest.kt", lang="kotlin"}
+~~~~~~~~
+class RequestDayForecastCommandTest {
+
+    @Test
+    fun `provider is called when command is executed`() {
+        val forecastProvider = mock(ForecastProvider::class.java)
+        val command = RequestDayForecastCommand(2, forecastProvider)
+
+        command.execute()
+
+        verify(forecastProvider).requestForecast(2)
+    }
+}
+~~~~~~~~
+
+If you run this test, you will find that it fails:
+
+{lang="text"}
+~~~~~~~~
+Mockito cannot mock/spy because :
+ - final class 
+~~~~~~~~
+
+You have two options to overcome this situation:
+
+- Use the `open` reserved word, which would allow Mockito to mock your class, but also any other class to extend this one (which was probably closed for a reason).
+- Extract an interface, and mock the interface. This one is a cleaner solution, but also slightly redundant if you are not using that interface for anything else.
+
+There is, however, a third alternative: an experimental feature in Mockito 2. This feature allows you to mock final classes and avoid those extra artifacts. It might be that by the time you read these lines, the feature is not experimental anymore. But if it still is, you need to add an extra library to opt in for the feature:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+testImplementation "org.mockito:mockito-inline:$mockito_version"
+~~~~~~~~
+
+Even if it is experimental, it works pretty well, so feel safe to use it. 
+
+Now you can rerun your test, and see how it magically passes.
+
+## 28.3 Instrumentation tests
+
+Instrumentation tests are a bit different. They are typically used to test UI interactions, where we need an Application instance to be running by the time the tests are executed. To do this, we need to deploy the app and run the tests on a device.
+
+This type of tests reside in the `androidTest` folder, and we must change 'Test Artifact' to 'Android Instrumentation Tests' in 'Build Variants' panel on old Android Studio versions. The official library to implement instrumentation tests is [Espresso](https://google.github.io/android-testing-support-library/), which helps us easily navigate through our App by writing `Action`s, and filter and check results using `ViewMatcher`s and `Matcher`s.
+
+The configuration is a bit harder than the previous one. We need a bunch of extra libraries and Gradle configuration. The good thing is that Kotlin does not add any extra overhead, so if you already know how to configure Espresso, it should be easy for you.
+
+First, specify the test runner in `defaultConfig`:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+defaultConfig {
+    ...
+    testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+}
+~~~~~~~~
+
+Once you have configured the runner, it is time to add the rest of the dependencies, this time using `androidTestImplementation`. That way, these libraries are only added when we compile to run the instrumentation tests:
+
+{title="build.gradle", lang="groovy"}
+~~~~~~~~
+buildscript {
+    ...
+    ext.test_support_version = '1.0.1'
+    ext.espresso_version = '3.0.1'
+}
+~~~~~~~~
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+dependencies {
+    ...
+    androidTestImplementation "com.android.support:support-annotations:$support_version"
+    androidTestImplementation "com.android.support.test:runner:$test_support_version"
+    androidTestImplementation "com.android.support.test:rules:$test_support_version"
+    androidTestImplementation "com.android.support.test.espresso:espresso-core:$espresso_version"
+    androidTestImplementation("com.android.support.test.espresso:espresso-contrib:$espresso_version") {
+        exclude group: 'com.android.support', module: 'appcompat-v7'
+        exclude group: 'com.android.support', module: 'support-v4'
+        exclude group: 'com.android.support', module: 'design'
+        exclude group: 'com.android.support', module: 'recyclerview-v7'
+}
+~~~~~~~~
+
+I do not want to spend much time talking about this, but here it is a brief explanation of why you need these libraries:
+
+- `runner`: It is the test runner, the one we specified in `defaultConfig`.
+- `rules`: Includes some rules that help tests inflate and launch the activities. We will use a rule in our examples.
+- `espresso-core`: the basic features of Espresso, the library that makes instrument tests easier.
+- `espresso-contrib`: it adds some extra features, such as `RecyclerView` testing support. We have to exclude some of its dependencies, because we already have them in the project, and tests crash otherwise.
+
+Let's now create a simple example. The test will click on the first row of the forecast list, and check that it can find a view with the id `R.id.weatherDescription`. This view is in the `DetailActivity`, which implies that we successfully navigated to the detail after clicking on a view inside the `RecyclerView`.
+
+~~~~~~~~
+class SimpleInstrumentationTest {
+
+    @get:Rule
+    val activityRule = ActivityTestRule(MainActivity::class.java)
+
+    ...
+}
+~~~~~~~~
+
+We need to create an activity rule, which instantiates the activity that the test will use. In Java, you would annotate the field using `@Rule`. However, as you know, fields and properties are not the same, so if you use just that, the execution will fail because the access to the field inside the property is not public. What you need to do is to annotate the getter. Kotlin allows doing that by specifying `get` or `set` before the name of the rule. In this case, write `@get:Rule`.
+
+After that, we are ready to create our first test:
+
+~~~~~~~~
+@Test fun itemClickNavigatesToDetail() {
+    onView(withId(R.id.forecastList)).perform(
+            RecyclerViewActions
+                .actionOnItemAtPosition<RecyclerView.ViewHolder>(0, click()))
+    onView(withId(R.id.weatherDescription))
+           .check(matches(isAssignableFrom(TextView::class.java)))
+}
+~~~~~~~~
+
+As these tests run on a device, we cannot use the same naming format we used for unit tests. Otherwise, it will crash.
+
+The function is annotated with `@Test`, the same way we did with unit tests. We can start using Espresso in the body of the test. It first performs a click over the first position of the recycler. Then, it checks that it can find a view with a specific id and that it is an instance of `TextView`.
+
+To run the test, you can do the same you did for unit tests: right click on the `java` folder below `androidTest`, and choose 'Run All Tests'. Now, in 'Target device', choose the target you prefer. Click 'OK' and then run. You should see how the app starts on your device, and the test clicks on the first position, opens the detail activity and closes the App again.
+
+Now we are going to do a more difficult one. The test will open the overflow from the `Toolbar`, click on `Settings` action, change the city code and check that the `Toolbar` title has changed to the corresponding one.
+
+~~~~~~~~
+@Test fun modifyZipCodeChangesToolbarTitle() {
+    openActionBarOverflowOrOptionsMenu(activityRule.activity)
+    onView(withText(R.string.settings)).perform(click())
+    onView(withId(R.id.cityCode)).perform(replaceText("94301"))
+    pressBack()
+    onView(isAssignableFrom(Toolbar::class.java))
+            .check(matches(
+                withToolbarTitle(`is`("Palo Alto (US)"))))
+}
+~~~~~~~~
+
+What the test exactly does is:
+
+- It first opens the overflow by using `openActionBarOverflowOrOptionsMenu`.
+- It then finds a view with the `Settings` text and performs a click on it.
+- After that, the settings activity opens, so it looks for the `EditText` and replaces the old city code with a new one.
+- It presses the back button, which saves the new value in the preferences, and closes the activity.
+- As `onResume` is executed in `MainActivity`, the request is performed again. This retrieves the forecast of the new city.
+- The last line checks the `Toolbar` title and sees whether it matches with the proper value.
+
+There is not a default matcher to check `Toolbar` title, but Espresso is easy to extend, so we can create a new matcher which implements the check:
+
+~~~~~~~~
+private fun withToolbarTitle(textMatcher: Matcher<CharSequence>): Matcher<Any> =
+        object : BoundedMatcher<Any, Toolbar>(Toolbar::class.java) {
+
+            override fun matchesSafely(toolbar: Toolbar): Boolean =
+                textMatcher.matches(toolbar.title)
+
+            override fun describeTo(description: Description) {
+                description.appendText("with toolbar title: ")
+                textMatcher.describeTo(description)
+            }
+        }
+~~~~~~~~
+
+The `matchesSafely` function is the place where the check happens, while the `describeTo` function adds some information about the matcher.
+
+This chapter has been especially interesting because we have seen how Kotlin is entirely compatible with both unit and integration tests and can interoperate with the testing libraries. [Take a look at the code](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-28) and run the tests by yourself.

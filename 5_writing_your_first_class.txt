@@ -1,0 +1,144 @@
+# 5 Writing your first class
+
+We already have our `MainActivity.kt` class. This activity will render a list of daily forecasts for the next seven days, so the layout requires some changes.
+
+## 5.1 Creating the layout
+
+The main view that will render the forecast list will be a `RecyclerView`, so a new dependency is required. Modify the `build.gradle` file:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    compile "com.android.support:appcompat-v7:$support_version"
+    compile "com.android.support:recyclerview-v7:$support_version"
+    ...
+}
+~~~~~~~~
+
+Now, in `activity_main.xml` :
+
+{title = "activity_main.xml", lang="xml"}
+~~~~~~~~
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+             android:layout_width="match_parent"
+             android:layout_height="match_parent">
+
+    <android.support.v7.widget.RecyclerView
+        android:id="@+id/forecast_list"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+</FrameLayout>
+~~~~~~~~
+
+In `MainActivity.kt`, remove the line we added to test that everything worked (it will be showing an error now). We will continue using the good old `findViewById()` for the time being:
+
+{title = "MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+val forecastList = findViewById(R.id.forecast_list) as RecyclerView
+forecastList.layoutManager = LinearLayoutManager(this)
+~~~~~~~~ 
+
+As you can see, we define the variable and cast it to `RecyclerView`. It is a bit different from Java; we are reviewing these differences in the next chapter. A `LayoutManager` is also specified, using the property naming instead of the setter. A list is enough for this layout, so let's make use of a `LinearLayoutManager`.
+
+I> ### Object instantiation
+I>
+I> Object instantiation presents some differences from Java too. You might have realized I omitted the "`new`" keyword. The constructor call is still there, but we save four precious characters. `LinearLayoutManager(this)` creates an instance of the object.
+
+## 5.2 The Recycler Adapter
+
+We need an adapter for the recycler too. I [talked about `RecyclerView` on my blog](http://antonioleiva.com/recyclerview/) some time ago, so it may help you if you are not used to it.
+
+The views used for `RecyclerView` adapter will be just `TextView`s for now, and a simple list of texts that we will create manually. Add a new Kotlin file called `ForecastListAdapter.kt`, and include this code:
+
+{title = "ForecastListAdapter.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastListAdapter(val items: List<String>) : 
+        RecyclerView.Adapter<ForecastListAdapter.ViewHolder>() {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): 
+            ViewHolder {
+        return ViewHolder(TextView(parent.context))
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        holder.textView.text = items[position]
+    }
+
+    override fun getItemCount(): Int = items.size
+
+    class ViewHolder(val textView: TextView) : RecyclerView.ViewHolder(textView)
+}
+~~~~~~~~ 
+
+Again, we can access the context and the text as properties. You can keep doing it as usual (using getters and setters), but you will get a warning from the compiler. This check can be disabled if you prefer to keep using the Java way. However, once you get used to properties, you will never look back.
+
+I> ### Default visibility is `public`
+I>
+I> Unless a visibility modifier is applied, classes, functions or properties are `public` by default. You can write it, but the compiler will show a warning, as it is not required.
+
+If you check the previous code, you may find there are warnings for a couple of things. The first one is recommending to set the `items` argument to private, as it is being used only inside the class.
+
+~~~~~~~~
+class ForecastListAdapter(private val items: List<String>)
+~~~~~~~~
+
+The other is recommending to write single-lined functions using an expression body. Let's follow the recommendations here too:
+
+~~~~~~~~
+override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+        ViewHolder(TextView(parent.context))
+~~~~~~~~
+
+So the complete resulting code is:
+
+{title = "ForecastListAdapter.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastListAdapter(private val items: List<String>) 
+    : RecyclerView.Adapter<ForecastListAdapter.ViewHolder>() {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            ViewHolder(TextView(parent.context))
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        holder.textView.text = items[position]
+    }
+
+    override fun getItemCount(): Int = items.size
+
+    class ViewHolder(val textView: TextView) : RecyclerView.ViewHolder(textView)
+}
+~~~~~~~~
+
+Back to the `MainActivity`, let's create the list of strings and then an instance of the adapter:
+
+{title = "MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+private val items = listOf(
+    "Mon 6/23 - Sunny - 31/17",
+    "Tue 6/24 - Foggy - 21/8",
+    "Wed 6/25 - Cloudy - 22/17",
+    "Thurs 6/26 - Rainy - 18/11",
+    "Fri 6/27 - Foggy - 21/10",
+    "Sat 6/28 - TRAPPED IN WEATHERSTATION - 23/18",
+    "Sun 6/29 - Sunny - 20/7"
+)
+
+override fun onCreate(savedInstanceState: Bundle?) {
+    ...
+    val forecastList = findViewById<RecyclerView>(R.id.forecast_list)
+    forecastList.layoutManager = LinearLayoutManager(this)
+    forecastList.adapter = ForecastListAdapter(items)
+}
+~~~~~~~~ 
+
+I> ### List creation
+I>
+I> Though I will talk about collections later in this book, I just want to explain for now that you can create constant lists (called immutable, we will see this concept soon) by using the helper function `listOf`. It receives a `vararg` of items of any type and infers the type of the result. 
+I>
+I> There are many other alternative functions, such as `setOf`, `mutableListOf` or `hashSetOf`, among others.
+
+I have also moved some classes to new packages to achieve a better project structure, so [check the corresponding branch](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-5) if you want to follow the same organization.
+
+We examined numerous new ideas in such a small amount of code, so let's cover them in the next chapter. We must stop here to learn some crucial concepts regarding basic types, variables, and properties.

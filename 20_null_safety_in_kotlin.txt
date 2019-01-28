@@ -1,0 +1,104 @@
+# 20 Null safety in Kotlin
+
+Null-safety is one of the most exciting features in Kotlin when you come from Java 7. However, as you have seen during this book, it is so implicit in the language we hardly had to worry about it until the previous chapter. 
+
+Being `null` considered the [billion-dollar mistake by its creator](https://en.wikipedia.org/wiki/Tony_Hoare), it is true that we sometimes need to define whether a variable contains a value or not. In Java, though annotations and IDEs are helping a lot these days, we can still do something like:
+
+~~~~~~~~
+Forecast forecast = null;
+forecast.toString();
+~~~~~~~~
+
+This code compiles correctly (you may get a warning from the IDE), and when it runs, it naturally throws a `NullPointerException`. This is unsafe, and even if you think that you could be able to have everything under control, as the code grows you will start losing track of the things that could be null. So we end up with lots of `NullPointerException`s or lots of nullity checks (probably a mix of both).
+
+## 20.1 How Null types work
+
+Most modern languages solve this issue in some way. Kotlin, the same as other similar languages such as Swift, **make use of question marks to identify nullable types**. That way, if a variable can be null, the compiler forces to deal with it in some way.
+
+As everything is an object in Kotlin (even Java primitive types), everything can be null. So, of course, we can have a nullable integer:
+
+~~~~~~~~
+val a: Int? = null
+~~~~~~~~
+
+You cannot work directly with a nullable type without doing some checks before. This code does not compile:
+
+~~~~~~~~
+val a: Int? = null
+a.toLong()
+~~~~~~~~
+
+That variable could be null and **the compiler is aware of that**, so until the nullity is checked, you cannot use it. 
+
+Here it is when another feature of the Kotlin compiler comes into action: the smart cast. If we check the nullity of an object, from that moment the object is automatically cast to its non-nullable type. Let's see an example:
+
+~~~~~~~~
+val a: Int? = null
+...
+if (a != null) {
+    a.toLong()
+}
+~~~~~~~~
+
+Inside the `if`, `a` becomes `Int` instead of `Int?`, so we can use it without checking nullity anymore or doing any castings. The code outside the `if` context, of course, has to deal with it. 
+
+This smart cast only works if a variable cannot be concurrently modified because otherwise the value could have been changed from another thread, and the previous check would be false at that moment. The compiler supports smart casting for `val` properties or local (`val` or `var`) variables.
+
+This can sound like much work. Do we have to fill all our code with nullity checks? Of course not. First, because most of the time you will not need null objects. Null references are more unused that one could think, you will realize when you start figuring out whether a variable should be null or not. But Kotlin also has some operators to do this task easier. We can, for instance, simplify the previous code to:
+
+~~~~~~~~
+val a: Int? = null
+...
+a?.toLong()
+~~~~~~~~
+
+Here we are using the **safe call operator (?.)**. The previous line is only executed if the variable is not null. Otherwise, it does nothing. Also, we can even provide an alternative for the null case using the **Elvis operator (?:)**:
+
+~~~~~~~~
+val a: Int? = null
+...
+val myLong = a?.toLong() ?: 0L
+~~~~~~~~
+
+Since `throw` and `return` are also expressions in Kotlin, they can be used in the right side of the Elvis operator:
+
+~~~~~~~~
+val myLong = a?.toLong() ?: return false
+~~~~~~~~
+
+~~~~~~~~
+val myLong = a?.toLong() ?: throw IllegalStateException()
+~~~~~~~~
+
+However, there may be situations when we know for sure we are dealing with a non-nullable variable, but the type is nullable. We can force the compiler to deal with nullable types skipping the restriction by using the **!! operator**:
+
+~~~~~~~~
+val a: Int? = null
+a!!.toLong()
+~~~~~~~~
+
+The previous code compiles, but it will crash. So we must make sure we only use it in a reduced number of situations. Usually, we can choose alternative solutions. A code full of **!!** is a smell, because it brings back the possible exceptions we are trying to avoid with nullable types.
+
+## 20.2 Nullity and Java libraries
+
+Ok, so the previous explanation works perfectly well with Kotlin code. But what happens with Java libraries in general, and Android SDK in particular? In Java, every object can be null by definition. So we would have to deal with a lot potentially null variables which in real life are never null. This means our code could end up with hundreds of `!!` operators, which is not a good idea at all.
+
+When you are dealing with the Android SDK, you will probably see that some arguments are marked with a single '**`!`**' when a Java method is used. For instance, something that gets an `Object` in Java is represented as `Any!` in Kotlin. This special operator represents that it is up to the developer to decide whether that variable should be null or not.
+
+Luckily, latest versions of the Android framework and the support library are starting using the `@Nullable` and `@NonNull` annotations to identify the parameters that can be null or the functions that can return null, and the Kotlin compiler can detect that and choose the appropriate translation into Kotlin language.
+
+Said that, if we are for instance overriding `onCreate` for an `Activity`, we need to mark `savedInstanceState` as nullable:
+
+~~~~~~~~
+override fun onCreate(savedInstanceState: Bundle?) {
+}
+~~~~~~~~
+
+Otherwise it will show an error. We cannot use this implementation:
+
+~~~~~~~~
+override fun onCreate(savedInstanceState: Bundle) {
+}
+~~~~~~~~
+
+This is great because an activity can receive a null bundle, and we get the right implementation for free. However, there are parts of the SDK that are missing annotations yet. So when in doubt, you can just use a nullable object and deal with the possible `null`. Remember, if you use `!!` it is because you are sure that the object cannot be null, so you can declare it as non-nullable directly.

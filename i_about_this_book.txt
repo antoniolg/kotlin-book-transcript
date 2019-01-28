@@ -1,0 +1,25 @@
+# I. About this book
+
+Hey! Thanks so much for your interest in this book, I am thrilled that you decided to become a Kotlin for Android expert.
+
+Many things have happened since I started writing "Kotlin for Android Developers" in mid-2015. At that point, Kotlin was still in an early access edition. However, I felt so much power in the language, that I decided to explain everything that I was learning in a book.
+
+Since then, the language has kept growing to the point that Google announced that they would start supporting Kotlin as an official language to develop Android apps.
+
+These were amazing news. But it was even more amazing that both Google and JetBrains suggested this book to Android developers who want to learn the language.
+
+As you may know, this is a lean publication. This book grew and progressed thanks to the readers' comments. So I can only thank you for helping me bring this dream to life.
+
+## What is "Kotlin for Android Developers" about
+
+Throughout this book, I create an Android app from the ground up using Kotlin as the primary language. The idea is to learn the language by example, instead of following a regular reference book structure. I will be stopping to explain the most useful concepts and ideas about Kotlin, comparing them to Java 6. This way, you can see what the differences are and which parts of the language can help you speed up your work.
+
+This book is not meant to be a language reference, but a tool for Android developers to learn Kotlin and be able to continue with their projects by themselves. The examples are meant to overcome the most recurring problems we have to face in our daily lives as app developers, by making use of Kotlin's expressiveness and some other exciting tools and libraries. However, this text covers most of the features of Kotlin, so by the end of the reading, you will have an in-depth knowledge of the language.
+
+The content is very practical, so I recommend that you follow the examples and the code in front of a computer and try everything it suggests. You could, however, take one first read to get a broad idea and then dive into practice.
+
+Even though this book now finished, I will review it from time to time to keep it up to date with new Kotlin versions. So feel free to write and tell me what you think about the book, or what could be improved. I want this book to be the perfect tool for Android developers, and as such, help and ideas will be welcomed.
+
+If you are reading a printed copy and want to receive the latest updates, please feel free to email me at *contact@antonioleiva.com* with a proof of purchase, and I will give you access to the digital copy. That way, you will keep receiving the updates. Do the same if you got it from any bookstores (Kindle, Kobo...) and you want to get access to the PDF version.
+
+Thanks for becoming part of this exciting project!

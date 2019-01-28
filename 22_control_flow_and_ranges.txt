@@ -1,0 +1,198 @@
+# 22. Flow control and ranges
+
+I have been using some conditional expressions in our code, so you are not new to some of the concepts of this chapter. But now it is time to explain them in more depth. Though in Kotlin we usually need fewer mechanisms to control the flow of the code that we would typically use in an entirely procedural programming language (some of them even practically disappear), they are still useful. There are also new powerful ideas that solve some particular problems much easier.
+
+## 22.1 If Expression
+
+Almost everything in Kotlin is an expression, which means it returns a value. `If` conditions are not an exception, so though we can use `if` as we are used to doing:
+
+~~~~~~~~
+if (x > 0) {
+    toast("x is greater than 0")
+} else if (x == 0) {
+    toast("x equals 0")
+} else {
+    toast("x is smaller than 0")
+}
+~~~~~~~~
+
+We can also assign its result to a variable. We have used it like that several times in our code:
+
+~~~~~~~~
+val res = if (x != null && x.size() >= days) x else null
+~~~~~~~~
+
+This also implies that we do not need a ternary operation similar to the Java one because we can solve it easily with: 
+
+~~~~~~~~
+val z = if (condition) x else y
+~~~~~~~~
+
+So the `if` expression always returns a value. If one of the branches returns `Unit`, the whole expression returns `Unit`, which can be ignored, and it will behave like a regular Java `if` condition in that case.
+
+## 22.2 When expression
+
+`When` expressions are similar to `switch/case` in Java, but far more powerful. This expression tries to match its argument against all possible branches sequentially until it finds one that is satisfied. It then applies the right side of the expression. The difference with a `switch/case` in Java is that the argument can be literally anything, and the conditions for the branches too.
+
+For the default option, we can add an `else` branch that will be executed if none of the previous conditions are satisfied. The code executed when a condition is satisfied can be a block too:
+
+~~~~~~~~
+when (x) {
+    1 -> println("x == 1")
+    2 -> println("x == 2")
+    else -> {
+        println("I'm a block")
+        println("x is neither 1 nor 2")
+    }
+}
+~~~~~~~~
+
+As it is an expression, it can return a result too. Take into consideration that when it is used as an expression, it must cover all the possible cases or implement the `else` branch. It will not compile otherwise:
+
+~~~~~~~~
+val result = when (x) {
+    0, 1 -> "binary"
+    else -> "error"
+}
+~~~~~~~~
+
+As you can see, the condition can be a set of values separated by commas. However, it can be many more things. We could, for instance, check the type of the argument and make decisions based on this:
+
+~~~~~~~~
+when(view) {
+    is TextView -> view.text = "I'm a TextView"
+    is EditText -> toast("EditText value: ${view.getText()}")
+    is ViewGroup -> toast("Number of children: ${view.getChildCount()} ")
+    else -> view.visibility = View.GONE
+}
+~~~~~~~~
+
+The argument is automatically converted in the right part of the condition, so you do not need to do any explicit casting.
+
+It is possible to check whether the argument is inside a range (I will explain ranges later in this chapter), or even inside a collection:
+
+~~~~~~~~
+val cost = when(x) {
+    in 1..10 -> "cheap"
+    in 10..100 -> "regular"
+    in 100..1000 -> "expensive"
+    in specialValues -> "special value!"
+    else -> "not rated"
+}
+~~~~~~~~
+
+Alternatively, you could also get rid of the argument and do any crazy checks you may need. It could easily substitute an `if / else` chain:
+
+~~~~~~~~
+val res = when {
+    x in 1..10 -> "cheap"
+    s.contains("hello") -> "it's a welcome!"
+    v is ViewGroup -> "child count: ${v.getChildCount()}"
+    else -> ""
+}
+~~~~~~~~
+
+## 22.3 For loops
+
+Though you will not use them too much if you make use of functional operators in collections, `for` loops can be useful in some situations, so they are still available. It works with anything that provides an iterator:
+
+~~~~~~~~
+for (item in collection) {
+    print(item)
+}
+~~~~~~~~
+
+If we want to achieve the regular iteration over indices, we can also do it using ranges:
+
+~~~~~~~~
+for (index in 0..viewGroup.getChildCount() - 1) {
+    val view = viewGroup.getChildAt(index)
+    view.visibility = View.VISIBLE
+}
+~~~~~~~~
+
+When iterating over an array or a list, we can make uses of existing properties that return a set of indices, so the previous artifact is not necessary:
+
+~~~~~~~~
+for (i in array.indices)
+    print(array[i])
+~~~~~~~~
+
+## 22.4 While and do/while loops
+
+You can keep using while loops too, though they are not very common in Kotlin either. There are usually simpler and more visual ways to resolve this problem. A couple of examples:
+
+~~~~~~~~
+while (x > 0) {
+    x--
+}
+
+do {
+    val y = retrieveData()
+} while (y != null) // y is visible here!
+~~~~~~~~
+
+## 22.5 Ranges
+
+It is challenging to explain flow control without talking about ranges. But their scope is broader. Range expressions make use of an operator in the form of "`..`" that is defined implementing a `rangeTo` function.
+
+Ranges help simplify our code in many creative ways. For instance we can convert this:
+
+~~~~~~~~
+if (i >= 0 && i <= 10)
+    println(i)
+~~~~~~~~
+    
+Into this:
+
+~~~~~~~~
+if (i in 0..10)
+    println(i)
+~~~~~~~~
+
+Kotlin defines ranges for any types that can be compared, but for numerical types the compiler optimizes it by converting it to simpler analog code in Java, to avoid the extra overhead. The numerical ranges are also iterable, and the loops are optimized too by converting them to the same bytecode a `for` with indices would use in Java:
+
+~~~~~~~~
+for (i in 0..10)
+    println(i)
+~~~~~~~~
+
+Ranges are incremental by default, so something like:
+
+~~~~~~~~
+for (i in 10..0)
+    println(i)
+~~~~~~~~
+
+Would do nothing. You can, however, use the function `downTo`:
+
+~~~~~~~~
+for (i in 10 downTo 0)
+    println(i)
+~~~~~~~~
+
+We can define a spacing different from 1 among the values in a range by using `step`:
+
+~~~~~~~~
+for (i in 1..4 step 2) println(i)
+
+for (i in 4 downTo 1 step 2) println(i)
+~~~~~~~~
+
+If you want to create an open range (which excludes the last item), you can use the function `until`:
+
+~~~~~~~~
+for (i in 0 until 4) println(i)
+~~~~~~~~
+
+This previous line prints from 0 to 3, but skips the last value. This means that `0 until 4 == 0..3`. For iterations over lists, it could be easier to understand if we use `for (i in 0 until list.size)` instead of `for (i in 0..list.size - 1)`.
+
+As mentioned before, there are really creative ways to use ranges. For instance, an easy way to get the list of `View`s inside a `ViewGroup` would be:
+
+~~~~~~~~
+val views = (0 until viewGroup.childCount).map { viewGroup.getChildAt(it) }
+~~~~~~~~
+    
+The mix of ranges and functional operators prevents from having to use an explicit loop to iterate over the collection and the creation of an explicit list where we add the views. You can do everything on a single line.
+
+If you want to know more about how to implement ranges and see more examples and useful information, you can go to [Kotlin reference](https://kotlinlang.org/docs/reference/ranges.html).

@@ -1,0 +1,329 @@
+# 23 Creating a Detail Activity
+
+When we click on an item from the home screen, we would expect to navigate to a detail activity and see some extra info about the forecast for that day. We are currently showing a toast after an item click, but it is time to change that. 
+
+## 23.1 Preparing the request
+
+As we need to know which item we are going to show in the detail activity, logic tells we need to send the _id_ of the forecast to the detail. So the domain model needs a new _id_ property:
+
+{title="domain/model/DomainClasses.kt", lang="kotlin"}
+~~~~~~~~
+data class Forecast(val id: Long, val date: Long, val description: String, 
+    val high: Int, val low: Int, val iconUrl: String)
+~~~~~~~~
+
+The `ForecastProvider` also needs a new function, which returns the requested forecast by id. The `DetailActivity` will use it to recover the forecast based on the id it will receive. As all the requests always iterate over the sources and return the first non-null result, we can extract that behaviour to another function:
+
+{title="domain/datasource/ForecastProvider.kt", lang="kotlin"}
+~~~~~~~~
+private fun <T : Any> requestToSources(f: (ForecastDataSource) -> T?): T 
+        = sources.firstResult { f(it) }
+~~~~~~~~
+
+The function is generified using a non-nullable type. It will receive a function which uses a `ForecastDataSource` to return a nullable object of the generic type, and will finally return a non-nullable object. We can rewrite the previous request and write the new one this way:
+
+{title="domain/datasource/ForecastProvider.kt", lang="kotlin"}
+~~~~~~~~
+fun requestByZipCode(zipCode: Long, days: Int): ForecastList = requestToSources {
+    val res = it.requestForecastByZipCode(zipCode, todayTimeSpan())
+    if (res != null && res.size() >= days) res else null
+}
+
+fun requestForecast(id: Long): Forecast = requestToSources { 
+    it.requestDayForecast(id) 
+}
+~~~~~~~~
+
+Now the data sources need to implement the new function:
+
+{title="domain/datasource/ForecastDataSource.kt", lang="kotlin"}
+~~~~~~~~
+fun requestDayForecast(id: Long): Forecast?
+~~~~~~~~
+
+The `ForecastDb` will always have the required value already cached from previous requests, so we can get it from there this way:
+
+{title="data/db/ForecastDb.kt", lang="kotlin"}
+~~~~~~~~
+override fun requestDayForecast(id: Long): Forecast? = forecastDbHelper.use {
+    val forecast = select(DayForecastTable.NAME).byId(id).
+            parseOpt { DayForecast(HashMap(it)) }
+
+    if (forecast != null) dataMapper.convertDayToDomain(forecast) else null
+}
+~~~~~~~~
+
+The `select` query is very similar to the previous one. I created another utility function called `byId`, because a request by _id_ is so common that a function like that simplifies the process and is easier to read. The implementation of the function is quite simple:
+
+{title="extensions/DatabaseExtensions.kt", lang="kotlin"}
+~~~~~~~~
+fun SelectQueryBuilder.byId(id: Long) 
+        = whereSimple("_id = ?", id.toString())
+~~~~~~~~
+
+It makes use of the `whereSimple` function and implements the search over the `_id` field. This function is quite generic, but as you can see, you could create as many extension functions as you need based on the structure of your database, and hugely simplify the readability of your code. The `DbDataMapper` has some slight changes not worth mentioning. You can check them in the repository.
+
+On the other hand, the `ForecastServer` is never used, because the info is always cached in the database. We could implement it to defend our code from uncommon edge cases, but we are not doing it in this case, so it will just throw an exception if the function is called:
+
+{title="data/server/ForecastServer.kt", lang="kotlin"}
+~~~~~~~~
+override fun requestDayForecast(id: Long) 
+        = throw UnsupportedOperationException()
+~~~~~~~~
+
+I> ### `try` and `throw` are expressions
+I>
+I> In Kotlin, almost everything is an expression, which means it returns a value. This is really important for functional programming, and particularly useful when dealing with edge cases with `try-catch` or when throwing exceptions. For instance, the example above shows how we can assign an exception to the result even if they are not of the same type, instead of having to create a full block of code. This is very useful too when we want to throw an exception in one of `when` branches:
+I> 
+I> ~~~~~~~~
+I> val x = when(y) {
+I>     in 0..10 -> 1
+I>     in 11..20 -> 2
+I>     else -> throw Exception("Invalid")
+I> }
+I> ~~~~~~~~
+I>
+I> The same happens with `try-catch`, we can assign a value depending on the result of the try:
+I> 
+I> ~~~~~~~~
+I> val x = try { doSomething() } catch { null }
+I> ~~~~~~~~
+
+The last thing we need to be able to perform the request from the new activity is to create a command. The code is really simple:
+
+{title="domain/commands/RequestDayForecastCommand.kt", lang="kotlin"}
+~~~~~~~~
+class RequestDayForecastCommand(
+        val id: Long,
+        private val forecastProvider: ForecastProvider = ForecastProvider()) :
+        Command<Forecast> {
+
+    override fun execute() = forecastProvider.requestForecast(id)
+}
+~~~~~~~~
+
+The request returns a `Forecast` result that is used by the activity to draw its UI.
+
+## 23.2 Providing a new activity
+
+We are now prepared to create the `DetailActivity`. 
+
+In Android Studio 2.3 and below, you can select the package where you want to create the activity, right click and select `New -> Kotlin Activity`.
+
+For Android Studio 3.0, the wizard already allows selecting the language. Choose `New -> Activity` and the type of activity you want to create. There is a `Source Language` drop-down at the end of the screen that you can use to change the language to Kotlin.
+
+Our detail activity receives a couple of parameters from the main one: the forecast id and the name of the city. The first one is used to request the data from the database, and the name of the city fills the toolbar. So we first need a couple of names to identify the parameters in the bundle:
+
+{title="ui/activities/DetailActivity.kt", lang="kotlin"}
+~~~~~~~~
+public class DetailActivity : AppCompatActivity() {
+
+    companion object {
+        const val ID = "DetailActivity:id"
+        const val CITY_NAME = "DetailActivity:cityName"
+    }
+    ...
+}
+~~~~~~~~
+
+In `onCreate` function, the first step is to set the content view. The UI will be really simple, but more than enough for this app example:
+
+{title="layout/activity_detail.xml", lang="xml"}
+~~~~~~~~
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingBottom="@dimen/activity_vertical_margin"
+    android:paddingLeft="@dimen/activity_horizontal_margin"
+    android:paddingRight="@dimen/activity_horizontal_margin"
+    android:paddingTop="@dimen/activity_vertical_margin">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        tools:ignore="UseCompoundDrawables">
+
+        <ImageView
+            android:id="@+id/icon"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            tools:src="@mipmap/ic_launcher"
+            tools:ignore="ContentDescription"/>
+
+        <TextView
+            android:id="@+id/weatherDescription"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="@dimen/spacing_xlarge"
+            android:textAppearance="@style/TextAppearance.AppCompat.Display1"
+            tools:text="Few clouds"/>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:id="@+id/maxTemperature"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_margin="@dimen/spacing_xlarge"
+            android:gravity="center_horizontal"
+            android:textAppearance="@style/TextAppearance.AppCompat.Display3"
+            tools:text="30"/>
+
+        <TextView
+            android:id="@+id/minTemperature"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_margin="@dimen/spacing_xlarge"
+            android:gravity="center_horizontal"
+            android:textAppearance="@style/TextAppearance.AppCompat.Display3"
+            tools:text="10"/>
+
+    </LinearLayout>
+
+</LinearLayout>
+~~~~~~~~
+
+Then assign it from `onCreate` code. Use the city name to fill the toolbar title. The methods for `intent` and `title` are automatically mapped to a property:
+
+{title="ui/activities/DetailActivity.kt", lang="kotlin"}
+~~~~~~~~
+setContentView(R.layout.activity_detail)
+title = intent.getStringExtra(CITY_NAME)
+~~~~~~~~
+
+The other part in `onCreate` implements the call to the command. It is very similar to the call we previously did:
+
+{title="ui/activities/DetailActivity.kt", lang="kotlin"}
+~~~~~~~~
+doAsync {
+    val result = RequestDayForecastCommand(intent.getLongExtra(ID, -1)).execute()
+    uiThread { bindForecast(result) }
+}
+~~~~~~~~
+
+When the result is recovered from the database, the `bindForecast` function is called in the UI thread. I am using Kotlin Android Extensions plugin again in this activity, to get the properties from the XML without using `findViewById`:
+
+{title="ui/activities/DetailActivity.kt", lang="kotlin"}
+~~~~~~~~
+import kotlinx.android.synthetic.main.activity_detail.*
+
+...
+
+private fun bindForecast(forecast: Forecast) = with(forecast) {
+    Picasso.with(ctx).load(iconUrl).into(icon)
+    supportActionBar?.subtitle = date.toDateString(DateFormat.FULL)
+    weatherDescription.text = description
+    bindWeather(high to maxTemperature, low to minTemperature)
+}
+~~~~~~~~
+
+There are some interesting things here. For instance, I am creating another extension function able to convert a `Long` object into a visual date string. Remember we were using it in the adapter too, so it is a good moment to extract it into a function:
+
+{title="extensions/ExtensionUtils.kt", lang="kotlin"}
+~~~~~~~~
+fun Long.toDateString(dateFormat: Int = DateFormat.MEDIUM): String {
+    val df = DateFormat.getDateInstance(dateFormat, Locale.getDefault())
+    return df.format(this)
+}
+~~~~~~~~
+
+It gets a date format (or use the default `DateFormat.MEDIUM`) and converts the `Long` into a `String` that is understandable by the user. 
+
+Another interesting function is `bindWeather`. It gets a `vararg` of pairs of `Int` and `TextView`, and assigns a text and a text color to the `TextView`s based on the temperature.
+
+{title="ui/activities/DetailActivity.kt", lang="kotlin"}
+~~~~~~~~
+private fun bindWeather(vararg views: Pair<Int, TextView>) = views.forEach {
+    it.second.text = "${it.first}"
+    it.second.textColor = color(when (it.first) {
+        in -50..0 -> android.R.color.holo_red_dark
+        in 0..15 -> android.R.color.holo_orange_dark
+        else -> android.R.color.holo_green_dark
+    })
+}
+~~~~~~~~
+
+For each pair, it assigns the text that shows the temperature and a color based on the value of the temperature: red for low temperatures, orange for mild ones and green for the rest. The values are random, but it is a good illustration of what we can do with a `when` expression, how clean and short the code becomes.
+
+`color` is an extension function I miss from Anko, which simplifies the way to get a color from resources, similar to the `dimen` one we have used in some other places. At the time of writing this lines, current support library relies on the class `ContextCompat` to get a color in a compatible way for all Android versions:
+
+{title="extensions/ContextExtensions.kt", lang="kotlin"}
+~~~~~~~~
+public fun Context.color(res: Int): Int = ContextCompat.getColor(this, res)
+~~~~~~~~
+
+I was missing a property representation for `textColor`. The thing is `TextView` lacks `getTextColor()` method, so it is not automatically parsed. A definition could be this one:
+
+{title="extensions/ViewExtensions.kt", lang="kotlin"}
+~~~~~~~~
+var TextView.textColor: Int
+    get() = currentTextColor
+    set(v) = setTextColor(v)
+~~~~~~~~
+
+There is an implementation in another Anko package (it returns an exception in `get`, it could be an alternative), the one related to the creation of views using a DSL. If you are implementing your views using regular XML, I recommend not to add this library if you are using one or two functions. That library is big, and you will waste a good part of method count.
+
+The `AndroidManifest` also needs to be aware that a new activity exists:
+
+{title="AndroidManifest.xml", lang="kotlin"}
+~~~~~~~~
+<activity
+    android:name=".ui.activities.DetailActivity"
+    android:parentActivityName=".ui.activities.MainActivity" >
+    <meta-data
+        android:name="android.support.PARENT_ACTIVITY"
+        android:value="com.antonioleiva.weatherapp.ui.activities.MainActivity" />
+</activity>
+~~~~~~~~
+
+## 23.3 Start an activity: reified functions
+
+The final step consists of starting the detail activity from the main activity. We can rewrite the adapter instantiation this way:
+
+~~~~~~~~
+val adapter = ForecastListAdapter(result) {
+    val intent = Intent(MainActivity@this, javaClass<DetailActivity>())
+    intent.putExtra(DetailActivity.ID, it.id)
+    intent.putExtra(DetailActivity.CITY_NAME, result.city)
+    startActivity(intent)
+}
+~~~~~~~~
+
+But this is too verbose. As usual, Anko provides a much simpler way to start an activity by using a **reified function**:
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+val adapter = ForecastListAdapter(result) {
+    startActivity<DetailActivity>(DetailActivity.ID to it.id,
+            DetailActivity.CITY_NAME to result.city)
+}
+~~~~~~~~
+
+What is the magic behind reified functions? As you may know, when we create a generic method in Java, there is no way to get the class from the generic type. A popular workaround is to pass the class as a parameter. In Kotlin, an inline function can be reified, which means we can get and use the class of the generic type inside the function. In this case, we can create the intent inside the function, by calling `T::class.javaClass`. A simpler version of what Anko does would be the next (I am only using `String` extras in this example):
+
+~~~~~~~~
+public inline fun <reified T: Activity> Context.startActivity(
+        vararg params: Pair<String, String>) {
+    
+    val intent = Intent(this, T::class.java)
+    params.forEach { intent.putExtra(it.first, it.second) }
+    startActivity(intent)
+}
+~~~~~~~~
+
+The real implementation is a bit more complicated because it uses a long and a boring `when` expression to add the extras depending on the type, but it does not add much useful knowledge to the concept.
+
+Reified functions are, once more, a syntactic sugar that simplifies the code and improves its comprehension. In this case, it creates an intent by getting the `javaClass` from the generic type, iterates over `params` and adds them to the intent, and starts the activity using the intent. The reified type is limited to be an `Activity` descendant.
+
+The rest of little details are covered [in the repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-23). We now have a simple (but complete) master-detail App implemented in Kotlin without using a single line of Java.

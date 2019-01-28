@@ -1,0 +1,193 @@
+# 12 Making the forecast list clickable
+
+Current items layout needs some work to be ready for a real app. The first thing is to create a proper XML that can fit our basic needs. We want to show an icon, date, description and high and low temperatures. So let's create a layout called `item_forecast.xml`:
+
+{title="layout/item_forecast.xml", lang="xml"}
+~~~~~~~~
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="@dimen/spacing_xlarge"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <ImageView
+        android:id="@+id/icon"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        tools:src="@mipmap/ic_launcher"/>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginLeft="@dimen/spacing_xlarge"
+        android:layout_marginRight="@dimen/spacing_xlarge"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/date"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            tools:text="May 14, 2015"/>
+
+        <TextView
+            android:id="@+id/description"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.AppCompat.Caption"
+            tools:text="Light Rain"/>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/maxTemperature"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            tools:text="30"/>
+
+        <TextView
+            android:id="@+id/minTemperature"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.AppCompat.Caption"
+            tools:text="15"/>
+
+    </LinearLayout>
+    
+</LinearLayout>
+~~~~~~~~
+
+The domain model and data mapper must generate the complete icon url, so that we can load it:
+
+{title="model/DomainClasses.kt", lang="kotlin"}
+~~~~~~~~
+data class Forecast(val date: String, val description: String, 
+                    val high: Int, val low: Int, val iconUrl: String)
+~~~~~~~~
+
+In `ForecastDataMapper`:
+
+{title="domain/mappers/ForecastDataMapper.kt", lang="kotlin"}
+~~~~~~~~
+private fun convertForecastItemToDomain(forecast: Forecast): ModelForecast {
+    return ModelForecast(convertDate(forecast.dt), 
+            forecast.weather[0].description, forecast.temp.max.toInt(), 
+            forecast.temp.min.toInt(), generateIconUrl(forecast.weather[0].icon))
+}
+
+private fun generateIconUrl(iconCode: String): String 
+        = "http://openweathermap.org/img/w/$iconCode.png"
+~~~~~~~~
+
+The `icon` code we got from the first request is used to compose the complete URL for the icon image. The simplest way to load an image is by making use of an image loader library. [Picasso](http://square.github.io/picasso/) is an excellent option. You must add it to `build.gradle` dependencies:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+compile "com.squareup.picasso:picasso:2.5.2"
+~~~~~~~~
+
+The adapter needs a big rework too. A click listener will be necessary, so let's define it:
+
+{title="ui/adapters/ForecastListAdapter.kt", lang="kotlin"}
+~~~~~~~~
+interface OnItemClickListener {
+     operator fun invoke(forecast: Forecast)
+}
+~~~~~~~~
+
+If you remember from the last lesson, you can omit the `invoke` method when calling it. So let's use it as a way of simplification. The listener can be called in two ways:
+
+~~~~~~~~
+itemClick.invoke(forecast)
+itemClick(forecast)
+~~~~~~~~
+
+The `ViewHolder` will now be responsible of binding the forecast to the new view:
+
+{title="ui/adapters/ForecastListAdapter.kt", lang="kotlin"}
+~~~~~~~~
+class ViewHolder(view: View, private val itemClick: OnItemClickListener)
+    : RecyclerView.ViewHolder(view) {
+
+    private val iconView = view.find<ImageView>(R.id.icon)
+    private val dateView = view.find<TextView>(R.id.date)
+    private val descriptionView = 
+            view.find<TextView>(R.id.description)
+    private val maxTemperatureView = 
+            view.find<TextView>(R.id.maxTemperature)
+    private val minTemperatureView = 
+            view.find<TextView>(R.id.minTemperature)
+
+    fun bindForecast(forecast: Forecast) {
+        with(forecast) {
+            Picasso.with(itemView.ctx).load(iconUrl).into(iconView)
+            dateView.text = date
+            descriptionView.text = description
+            maxTemperatureView.text = "$high"
+            minTemperatureView.text = "$low"
+            itemView.setOnClickListener { itemClick(this) }
+        }
+    }
+}
+~~~~~~~~
+
+The constructor of the adapter now receives the `itemClick`. The methods for creation and binding are simpler:
+
+{title="ui/adapters/ForecastListAdapter.kt", lang="kotlin"}
+~~~~~~~~
+public class ForecastListAdapter(private val weekForecast: ForecastList, 
+        private val itemClick: ForecastListAdapter.OnItemClickListener) :
+        RecyclerView.Adapter<ForecastListAdapter.ViewHolder>() {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): 
+            ViewHolder {
+        val view = LayoutInflater.from(parent.ctx)
+            .inflate(R.layout.item_forecast, parent, false) 
+
+        return ViewHolder(view, itemClick)
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        holder.bindForecast(weekForecast[position])
+    }
+    ...
+}
+~~~~~~~~
+
+If you use this code, `parent.ctx` will not compile. Anko provides many extension functions to make Android coding simpler. It, for instance, includes a `ctx` property for activities and fragments, among others, which returns the context, but it lacks the same property for views. So we are going to create a new file called `ViewExtensions.kt` inside `ui.utils`, and add this extension property:
+
+~~~~~~~~
+val View.ctx: Context
+    get() = context
+~~~~~~~~
+
+From now on, any view can make use of it. It is not necessary at all, because you can use `context` synthetic property, but I think it gives some consistency if we are planning to use `ctx` in the other classes. Besides, it is another example of how to use extension properties.
+
+Finally, the `MainActivity` call to `setAdapter` results into this:
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+forecastList.adapter = ForecastListAdapter(result,
+        object : ForecastListAdapter.OnItemClickListener{
+            override fun invoke(forecast: Forecast) {
+                toast(forecast.date)
+            }
+        })
+~~~~~~~~
+
+As you can see, to implement an anonymous class we, in fact, create an `object` that implements the interface we created. That is because we are not making use of the power of functional programming, but you will learn how to convert this code into something cleaner in the next chapter.
+
+Try the new changes [from the repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-12).

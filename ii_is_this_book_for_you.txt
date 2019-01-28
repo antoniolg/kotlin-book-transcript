@@ -1,0 +1,15 @@
+# II. Is this book for you?
+
+This book is written to be useful to Android developers who are interested in learning the Kotlin language.
+
+This book is for you if you are in some of the following situations:
+
+- You have some basic knowledge of Android Development and the Android SDK, as well as the Java language.
+- You want to learn how to develop Android apps using Kotlin by following an example.
+- You need a guide on how to solve many of the common challenges Android developers face every day, by using a cleaner and more expressive language.
+
+On the other hand, this book may not be for you. These are the topics that you will not find in it:
+
+- The content of these pages is not a Kotlin Bible. I shall explain all language basics, and even more complicated ideas when they come out during the process, just when we need them. So you will learn by example and not the other way round.
+- I will not explain how to develop an Android app. You do not need a deep understanding of the platform, but at least some basics, such as some knowledge of Android Studio, Gradle, Java programming and Android SDK. You may even learn some new Android things in the process!
+- The book is not a guide to functional programming. Of course, I am showing what you need, as Java 6 is not functional at all, but I will not dive deep into the programming paradigm.

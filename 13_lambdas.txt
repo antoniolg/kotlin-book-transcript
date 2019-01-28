@@ -1,0 +1,147 @@
+# 13 Lambdas
+
+A lambda expression is a simple way to define an anonymous function. Lambdas are very useful because they prevent us from having to write the specification of the function in an abstract class or interface, and then the implementation of the class.
+
+In Kotlin, lambdas are first class citizens, which means that a function behaves as a type: it can be passed as an argument to another function, can be returned by a function, saved into a variable or a property, etc.
+
+## 13.1 Simplifying setOnClickListener()
+
+Let's see how this works using a typical example in Android: the click listener method from a `View`. If we want to implement a click listener behavior in Java, we first need to write the `OnClickListener` interface:
+
+{lang="java"}
+~~~~~~~~
+public interface OnClickListener {
+    void onClick(View v);
+}
+~~~~~~~~
+
+And then we write an anonymous class that implements this interface:
+
+{lang="java"}
+~~~~~~~~
+view.setOnClickListener(new OnClickListener() {
+    @Override
+    public void onClick(View v) {
+        Toast.makeText(v.getContext(), "Click", Toast.LENGTH_SHORT).show();
+    }
+});
+~~~~~~~~
+
+This would be the transformation of the code into Kotlin (using `toast` function from Anko):
+
+~~~~~~~~
+view.setOnClickListener(object : OnClickListener {
+    override fun onClick(v: View) {
+        toast("Click")
+    }
+})
+~~~~~~~~
+
+Luckily, Kotlin allows some optimizations over Java libraries, and lambdas can substitute any function that receives an interface with a single function. It works as if we had defined `setOnclickListener()` like this:
+
+~~~~~~~~
+fun setOnClickListener(listener: (View) -> Unit)
+~~~~~~~~
+
+To define a lambda expression, specify the function input arguments to the left of the arrow (surrounded by parentheses), and the return type to the right. In this case, we get a `View` and return `Unit` (nothing). So with this in mind, we can simplify the previous code a little:
+
+~~~~~~~~
+view.setOnClickListener({ view -> toast("Click")})
+~~~~~~~~
+
+Nice difference! While defining a function, we must use braces and specify the argument values to the left of the arrow and the body of the function to the right. We can even get rid of the left part if the input values are not used:
+
+~~~~~~~~
+view.setOnClickListener({ toast("Click") })
+~~~~~~~~
+
+If the last argument of a function is also a function, we can move it out of the parentheses:
+
+~~~~~~~~
+view.setOnClickListener() { toast("Click") }
+~~~~~~~~
+
+And, finally, if the function is the only parameter, we can get rid of the parentheses:
+
+~~~~~~~~
+view.setOnClickListener { toast("Click") }
+~~~~~~~~
+
+More than five times smaller than the original code in Java, and much easier to understand what is doing. 
+
+## 13.2 Click listener for ForecastListAdapter
+
+In the previous chapter, I wrote the click listener the hard way on purpose to have a good context to develop this one. But now it is time to put what you learnt into practice. We are removing the listener interface from the `ForecastListAdapter` and using a lambda instead:
+
+{title="ui/adapters/ForecastListAdapter.kt", lang="kotlin"}
+~~~~~~~~
+public class ForecastListAdapter(private val weekForecast: ForecastList,
+                                 private val itemClick: (Forecast) -> Unit)
+~~~~~~~~
+
+The function will receive a forecast and return nothing. The same change can be done to the `ViewHolder`:
+
+{title="ui/adapters/ForecastListAdapter.kt", lang="kotlin"}
+~~~~~~~~
+class ViewHolder(view: View, private val itemClick: (Forecast) -> Unit)
+~~~~~~~~
+
+The rest of the code remains unmodified. Just a last change to `MainActivity`:
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+val adapter = ForecastListAdapter(result) { forecast -> toast(forecast.date) }
+~~~~~~~~
+
+We can simplify the last line even more. In lambdas with only one argument, we can make use of the **_it_** reference, which prevents us from defining the left part of the function specifically. So we can do:
+
+~~~~~~~~
+val adapter = ForecastListAdapter(result) { toast(it.date) }
+~~~~~~~~
+
+##13.3 Extending the language
+
+Thanks to these transformations, we can create our builders and code blocks. We have already been using some interesting functions such as `with`. Though the one included in the standard library is a little more complex, a simpler implementation would be:
+
+~~~~~~~~
+inline fun <T> with(t: T, body: T.() -> Unit) { t.body() }
+~~~~~~~~
+
+This function gets an object of type `T` and a lambda that behaves as an extension function. The implementation takes the object and lets it execute the function. As the second parameter of the function is another function, it can be brought out of the parentheses, so we can create a block of code where we can use `this` and the public properties and functions of the object directly:
+
+~~~~~~~~
+with(forecast) {
+    Picasso.with(itemView.ctx).load(iconUrl).into(iconView)
+    dateView.text = date
+    descriptionView.text = description
+    maxTemperatureView.text = "$high"
+    minTemperatureView.text = "$low"
+    itemView.setOnClickListener { itemClick(this) }
+}
+~~~~~~~~
+
+I> ### Inline functions
+I>
+I> Inline functions are a bit different from regular functions. An inline function is substituted by its code during compilation, instead of doing the real call to a function. That reduces memory allocations and runtime overhead in some situations. For instance, if we have a function as an argument, a regular function internally creates an object that contains that function. On the other hand, inline functions substitute the code of the function in the place where it is called, so it does not require an internal object for that.
+
+Another example: we could create blocks of code that only run if the version is Lollipop or newer:
+
+~~~~~~~~
+inline fun supportsLollipop(code: () -> Unit) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        code()
+    }
+}
+~~~~~~~~
+
+The body of the function checks the version and executes the code if it meets the requirements. Now we could do:
+
+~~~~~~~~
+supportsLollipop {
+    window.setStatusBarColor(Color.BLACK)
+}
+~~~~~~~~
+
+For instance, Anko is also based on this idea to implement the DSL for Android layouts. You can also check an example from Kotlin reference, a showcase of a [DSL to generate HTML](http://kotlinlang.org/docs/reference/type-safe-builders.html) from code.
+
+The changes from this chapter are [in its corresponding branch](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-13).

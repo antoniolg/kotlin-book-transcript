@@ -1,0 +1,22 @@
+# 31 Conclusion
+
+Thanks for reading this book. Throughout this pages, we have learned Kotlin by implementing an Android app as an example. The weather app was an excellent example to play with the essential features most apps need: a master/detail UI, communication with an API, database storage, shared preferences...
+
+The good thing about this method is that you have learned the most important Kotlin concepts while using them. In my opinion, it is easier to absorb new knowledge when you put it into action. It was my primary goal, because reference books are usually a helpful tool to solve some specific doubts, but they are hard to read from the beginning to the very end. Besides, as the examples are usually out of context, it is difficult to understand which kind of problems those features solve.
+
+That was, in fact, the other goal of the book: to show you real problems we face in Android and how they can be solved using Kotlin. Any Android developer struggles with many questions when dealing with asynchrony, databases, or has to implement verbose listeners or activity navigations. By using a real app as an example, we have answered many of these questions while learning the new language features.
+
+I hope I achieved these goals, and I wish that you not only learned Kotlin but also enjoyed reading this book. Now that Google has adopted Kotlin, I am convinced that learning the language is the way to go: you will enjoy developing apps and get prepared for this new skill that is becoming a need in many Android job positions these days.
+
+This book is finished, but it does not mean that it is dead. I will keep updating it to the latest versions of Kotlin, reviewing and improving it based on your comments and suggestions. Feel free to write me about it at any moment and tell me what you think, the errors you find, concepts that are not clear enough or whatever concern you may have.
+
+It has been a fantastic journey during the months I have been writing this book. I have learned a lot too, so thanks again for helping 'Kotlin for Android Developers' to become a reality.
+
+Best,
+
+Antonio Leiva
+
+- Site: [antonioleiva.com](http://antonioleiva.com)
+- Email: [contact@antonioleiva.com](mailto:contact@antonioleiva.com)
+- Twitter: [@lime_cl](http://twitter.com/lime_cl)
+- Google+: [+AntonioLeivaGordillo](http://plus.google.com/+AntonioLeivaGordillo)

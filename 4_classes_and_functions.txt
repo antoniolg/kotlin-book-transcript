@@ -1,0 +1,138 @@
+# 4 Classes and functions
+
+Classes in Kotlin follow a straightforward structure. However, there are some slight differences from Java that you want to know before we continue. You can use [try.kotlinlang.org](http://try.kotlinlang.org/) to test this and some other simple examples without the need for a real project.
+
+You could also use the REPL that comes bundled with the Kotlin plugin. You can find it in *Tools -> Kotlin -> Kotlin REPL*.
+
+## 4.1 How to declare a class
+
+If you want to declare a class, you just need to use the keyword `class`:
+
+~~~~~~~~
+class MainActivity {
+    
+}
+~~~~~~~~
+
+Classes have a unique default constructor. We will see that we can create extra constructors for some exceptional cases, but keep in mind that most situations only require a single constructor. Parameters are written just after the name. Braces are not required if the class is empty:
+
+~~~~~~~~
+class Person(name: String, surname: String) 
+~~~~~~~~
+
+Where is the body of the constructor then? You can declare an `init` block:
+
+~~~~~~~~
+class Person(name: String, surname: String) {
+    init {
+    ...
+    }
+}
+~~~~~~~~
+
+## 4.2 Class inheritance
+
+By default, a class always extends from `Any` (similar to Java `Object`), but we can extend any other classes. Classes are closed by default (final), so we can only extend a class if it is explicitly declared as `open` or `abstract`:
+
+~~~~~~~~
+open class Animal(name: String)
+class Person(firstName: String, lastName: String) : Animal(firstName)
+~~~~~~~~
+
+Note that when using the single constructor structure, we need to specify the parameters we are using for the parent constructor. That is equivalent to calling `super()` in Java.
+
+## 4.3 Functions
+
+Functions (our methods in Java) are declared by using the **`fun`** keyword:
+
+~~~~~~~~
+fun onCreate(savedInstanceState: Bundle?) {
+}
+~~~~~~~~
+
+Functions in Kotlin always return a value. If you skip the return value, the function is indeed returning `Unit`. 
+
+`Unit` is similar to `void` in Java, though this is, in fact, an object. You can, of course, specify any type as a return value:
+
+~~~~~~~~
+fun add(x: Int, y: Int): Int {
+    return x + y
+}
+~~~~~~~~
+
+T> ### Tip: Semicolons are not necessary
+T>
+T> As you can see in the example above, I am not using semicolons at the end of the sentences. While you can use them, semicolons are not necessary, and it is a good practice to avoid them (the IDE warns you if you write them). When you get used, you will find that it saves you loads of time.
+
+However, if the result can be calculated using a single expression, you can get rid of brackets and use equal:
+
+~~~~~~~~
+fun add(x: Int, y: Int) : Int = x + y
+~~~~~~~~
+
+## 4.4 Constructor and functions parameters
+
+Parameters in Kotlin are a bit different from Java. As you can see, we first write the name of the parameter and then its type. 
+
+~~~~~~~~
+fun add(x: Int, y: Int) : Int {
+    return x + y
+}
+~~~~~~~~
+
+A handy thing about parameters is that we can make them optional by specifying a **default value**. Here is an example of a function you could create in an activity, which uses a toast to show a message:
+
+~~~~~~~~
+fun toast(message: String, length: Int = Toast.LENGTH_SHORT) {
+    Toast.makeText(this, message, length).show()
+}
+~~~~~~~~
+
+As you can see, the second parameter (`length`) specifies a default value, which allows you to write or omit the second value. This feature prevents the need for function overloading:
+
+~~~~~~~~
+toast("Hello")
+toast("Hello", Toast.LENGTH_LONG)
+~~~~~~~~
+
+The previous function would be equivalent to the next code in Java:
+
+~~~~~~~~
+void toast(String message){
+    toast(message, Toast.LENGTH_SHORT);
+}
+
+void toast(String message, int length){
+    Toast.makeText(this, message, length).show();
+}
+~~~~~~~~
+
+And this can be as complex as you want. Check this other example:
+
+~~~~~~~~
+fun niceToast(message: String,
+              tag: String = MainActivity::class.java.simpleName,
+              length: Int = Toast.LENGTH_SHORT) {
+    Toast.makeText(this, "[$tag] $message", length).show()
+}
+~~~~~~~~
+
+I added a third parameter that includes a tag which defaults to the class name. The number of overloads we would need in Java grows exponentially. You can now write these calls:
+
+~~~~~~~~
+niceToast("Hello")
+niceToast("Hello", "MyTag")
+niceToast("Hello", "MyTag", Toast.LENGTH_SHORT)
+~~~~~~~~
+
+There is even another option, because you can use **named arguments**, which means you can write the name of the argument preceding the value to specify which one you want:
+
+~~~~~~~~
+niceToast(message = "Hello", length = Toast.LENGTH_SHORT)
+~~~~~~~~
+
+T> ### Tip: String templates
+T>
+T> You can use template expressions directly in your strings, which simplifies writing complex strings based on static and variable parts. In the previous example, I used `"[$className] $message"`. 
+T>
+T>As you can see, anytime you want to add an expression, just write the `$` symbol. If the expression is a bit more complex, you can add a couple of brackets: `"Your name is ${user.name}"`.

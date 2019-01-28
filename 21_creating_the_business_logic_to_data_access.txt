@@ -1,0 +1,170 @@
+# 21 Creating the business logic to data access
+
+After implementing the access to the server and a way to interact with the database, it is time to put things together. The logical steps would be:
+
+1. Request the required data from the database
+2. Check if there is data for the corresponding week
+3. If it finds the required data, it is returned so that the UI can render it
+4. Otherwise, it requests the data to the server
+5. The result is saved in the database and returned so that the UI can render it
+
+Our commands should not need to deal with all this logic. The source of the data is an implementation detail that could easily require a logic modification, so adding some extra code that abstracts the commands from the access to the data sounds like a good idea. In our implementation, it will iterate over a list of sources until it finds a proper result.
+
+So let's start by specifying the interface any data source that wants to be used by our provider should implement:
+
+~~~~~~~~
+interface ForecastDataSource {
+    fun requestForecastByZipCode(zipCode: Long, date: Long): ForecastList?
+}
+~~~~~~~~
+
+The provider requires a function that receives a zip code and a date, and it should return a weekly forecast from that day.
+
+{title="domain/datasource/ForecastProvider.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastProvider(private val sources: List<ForecastDataSource> =
+        ForecastProvider.SOURCES) {
+
+    companion object {
+        const val DAY_IN_MILLIS = 1000 * 60 * 60 * 24
+        val SOURCES = listOf(ForecastDb(), ForecastServer())
+    }
+...
+}
+~~~~~~~~
+
+The forecast provider receives a list of sources, that once again can be specified through the constructor (for test purposes for instance), but I am defaulting it to a `SOURCES` list defined in the companion object. It will use a database source and a server source. The order is essential, because it will iterate over the sources, and the search will be stopped when any of the sources returns a valid result. The logical order is to search first locally (in the database) and then through the API.
+
+So the main method looks like this:
+
+{title="domain/datasource/ForecastProvider.kt", lang="kotlin"}
+~~~~~~~~
+fun requestByZipCode(zipCode: Long, days: Int): ForecastList
+            = sources.firstResult { requestSource(it, days, zipCode) }
+~~~~~~~~
+
+It gets the first result that is not `null`. When searching through the list of functional operators explained in chapter 18, I could not find one that did exactly what I was looking for. So, as we have access to Kotlin sources, I just copied `first` function and modified it to behave as expected:
+
+{title="extensions/CollectionsExtensions.kt", lang="kotlin"}
+~~~~~~~~
+inline fun <T, R : Any> Iterable<T>.firstResult(predicate: (T) -> R?): R {
+    for (element in this) {
+        val result = predicate(element)
+        if (result != null) return result
+    }
+    throw NoSuchElementException("No element matching predicate was found.")
+}
+~~~~~~~~
+
+The function receives a predicate which gets an object of type `T` and returns a value of type `R?`. The generic type specifies that the predicate can return null, but our `firstResult` function cannot. That is the reason why it returns a value of type `R`.
+
+How does it work? It iterates and executes the predicate over the elements in the `Iterable` collection. When the result of the predicate is not null, this result is returned.
+
+If we wanted to include the case where all the sources can return `null`, we could have derived from `firstOrNull` function instead. The difference would consist of returning `null` instead of throwing an exception in the last line. But I am not dealing with those details in this code.
+
+In our example `T = ForecastDataSource` and `R = ForecastList`. But remember the function specified in `ForecastDataSource` returned a `ForecastList?`, which equals `R?`, so everything matches perfectly. The function `requestSource` just makes the previous function look more readable:
+
+{title="domain/datasource/ForecastProvider.kt", lang="kotlin"}
+~~~~~~~~
+fun requestSource(source: ForecastDataSource, days: Int, zipCode: Long):
+        ForecastList? {
+    val res = source.requestForecastByZipCode(zipCode, todayTimeSpan())
+    return if (res != null && res.size() >= days) res else null
+}
+~~~~~~~~
+
+The request is executed and only returns a value if the result is not null and the number of days matches the parameter. Otherwise, the source does not have enough up-to-date data to return a successful result.
+
+The function `todayTimeSpan()` calculates the time in milliseconds for the current day, eliminating the "time" offset, and keeping only the day. Some of the sources (in our case the database) may need it. The server defaults to today unless we specify it, so it will be ignored there.
+
+{title="domain/datasource/ForecastProvider.kt", lang="kotlin"}
+~~~~~~~~
+private fun todayTimeSpan() = System.currentTimeMillis() / 
+    DAY_IN_MILLIS * DAY_IN_MILLIS
+~~~~~~~~
+
+The complete code of this class would be:
+
+{title="domain/datasource/ForecastProvider.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastProvider(private val sources: List<ForecastDataSource> = 
+        ForecastProvider.SOURCES) {
+
+    companion object {
+        const val DAY_IN_MILLIS = 1000 * 60 * 60 * 24;
+        val SOURCES = listOf(ForecastDb(), ForecastServer())
+    }
+
+    fun requestByZipCode(zipCode: Long, days: Int): ForecastList
+            = sources.firstResult { requestSource(it, days, zipCode) }
+
+    private fun requestSource(source: RepositorySource, days: Int, 
+            zipCode: Long): ForecastList? {
+        val res = source.requestForecastByZipCode(zipCode, todayTimeSpan())
+        return if (res != null && res.size >= days) res else null
+    }
+
+    private fun todayTimeSpan() = System.currentTimeMillis() / 
+            DAY_IN_MILLIS * DAY_IN_MILLIS
+}
+~~~~~~~~
+
+We already defined `ForecastDb`. It just now needs to implement `ForecastDataSource`:
+
+{title="data/db/ForecastDb.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastDb(private val forecastDbHelper: ForecastDbHelper =
+        ForecastDbHelper.instance, 
+        private val dataMapper: DbDataMapper = DbDataMapper())
+        : ForecastDataSource {
+
+    override fun requestForecastByZipCode(zipCode: Long, date: Long) =
+            forecastDbHelper.use {
+    ...
+    }
+    ...
+}
+~~~~~~~~
+
+We have not implemented `ForecastServer` yet, but it is straightforward. It makes use of a `ForecastDb` to save the response once it is received from the server. That way, we can keep it cached into the database for future requests.
+
+{title="data/server/ForecastServer.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastServer(
+    private val dataMapper: ServerDataMapper = ServerDataMapper(),
+    private val forecastDb: ForecastDb = ForecastDb()) 
+    : ForecastDataSource {
+
+    override fun requestForecastByZipCode(zipCode: Long, date: Long): 
+            ForecastList? {
+        val result = ForecastByZipCodeRequest(zipCode).execute()
+        val converted = dataMapper.convertToDomain(zipCode, result)
+        forecastDb.saveForecast(converted)
+        return forecastDb.requestForecastByZipCode(zipCode, date)
+    }
+
+}
+~~~~~~~~
+
+It also makes use of a data mapper, the first one we created, though I modified the name of some methods to make it similar to the data mapper we used for the database model. You can take a look at the provider to see the details.
+
+The overridden function makes the request to the server, converts the result to domain objects and saves them into the database. It finally returns the values from the database, because we need the row ids that were self-generated by the insert query.
+
+With these last steps, the provider is already implemented. Now we need to start using it. The `ForecastCommand` no longer should interact directly with server requests, nor convert the data to the domain model.
+
+{title="domain/commands/RequestForecastCommand.kt", lang="kotlin"}
+~~~~~~~~
+class RequestForecastCommand(private val zipCode: Long,
+        private val forecastProvider: ForecastProvider = ForecastProvider()) :
+        Command<ForecastList> {
+
+    companion object {
+        const val DAYS = 7
+    }
+
+    override fun execute(): ForecastList =
+        forecastProvider.requestByZipCode(zipCode, DAYS)
+}
+~~~~~~~~
+
+The rest of code modifications consist of some renames and changes in package structure here and there. Take a look at the corresponding branch at [Kotlin for Android Developers repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-21). 

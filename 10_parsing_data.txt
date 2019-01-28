@@ -1,0 +1,202 @@
+# 10 Parsing data
+
+Now that we know how to create data classes, we are ready to start parsing data. In the `data` package, create a new file called `ResponseClasses.kt`. If you open in a browser the URL we used in chapter 8, you can see the structure of the JSON file. It consists of an object which contains a city, and a list of forecast predictions. The city has an id, a name, its coordinates and the country where it belongs. Each forecast comes with a good set of information such as the date, different temperatures, and a weather object with the description and an id for an icon, for instance.
+
+## 10.1 Converting JSON to data classes
+
+In our current UI, we are not going to use all this data. However, we will parse everything down to classes, in case it is of some use in the future. These are the data classes we need:
+
+{title="data/ResponseClasses.kt", lang="kotlin"}
+~~~~~~~~
+data class ForecastResult(val city: City, val list: List<Forecast>)
+
+data class City(val id: Long, val name: String, val coord: Coordinates,
+                val country: String, val population: Int)
+
+data class Coordinates(val lon: Float, val lat: Float)
+
+data class Forecast(val dt: Long, val temp: Temperature, val pressure: Float,
+                    val humidity: Int, val weather: List<Weather>,
+                    val speed: Float, val deg: Int, val clouds: Int,
+                    val rain: Float)
+
+data class Temperature(val day: Float, val min: Float, val max: Float,
+                       val night: Float, val eve: Float, val morn: Float)
+
+data class Weather(val id: Long, val main: String, val description: String,
+                   val icon: String)
+~~~~~~~~
+
+As we are using [Gson](https://github.com/google/gson) to parse the JSON to our classes, the properties must have the same name as the ones in the JSON or specify a serialized name. A good practice explained in most software architectures is to use different models for the different layers in our app to decouple them from each other. So I prefer to simplify the declaration of these classes because I will convert them before being used in the rest of the app. The names of the properties used in this class are the same as the names in the JSON response.
+
+Now, the `Request` class needs some modifications to return the parsed result. It also receives only the `zipcode` of the city instead of the complete URL so that it becomes more readable. For now, the static URL is declared in a **companion object**.
+
+I> ### Companion objects
+I>
+I> Kotlin allows declaring objects to define static behaviors. In Kotlin, we cannot create static properties or functions, but we need to rely on objects. However, these objects make some well-known patterns such as `Singleton` very easy to implement.
+I>
+I>If we need some static properties, constants or functions in a class, we can use a **companion object**. This object is shared among all instances of the class, the same as a static field or method would do in Java. Use the reserved word `const` for your compile-time constants. They are more efficient and friendly to use from Java code.
+
+Check the resulting code:
+
+{title="data/ForecastRequest.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastRequest(private val zipCode: String) {
+
+    companion object {
+        private const val APP_ID = "15646a06818f61f7b8d7823ca833e1ce"
+        private const val URL = "http://api.openweathermap.org/data/2.5/" +
+                "forecast/daily?mode=json&units=metric&cnt=7"
+        private const val COMPLETE_URL = "$URL&APPID=$APP_ID&zip="
+    }
+
+    fun execute(): ForecastResult {
+        val forecastJsonStr = URL(COMPLETE_URL + zipCode).readText()
+        return Gson().fromJson(forecastJsonStr, ForecastResult::class.java)
+    }
+}
+~~~~~~~~
+
+Remember you need to add the Gson library to `build.gradle` dependencies:
+
+{title="app/build.gradle", lang="groovy"}
+~~~~~~~~
+compile "com.google.code.gson:gson:2.8.1"
+~~~~~~~~
+
+## 10.2 Shaping the domain layer
+
+Now let's create a new package representing the `domain` layer. It contains some `Command`s in charge of performing the use cases of the app.
+
+Firstly, a definition of a `Command` is required. There is a generic declaration in the following example. We will talk about this topic in next chapters.
+
+{title="domain/commands/Command.kt", lang="kotlin"}
+~~~~~~~~
+public interface Command<out T> {
+    fun execute(): T
+}
+~~~~~~~~
+
+These commands execute an operation and return an object of the class specified in its generic type. Remember that **every function in Kotlin returns a value**. By default, if nothing is specified, it returns an object of the `Unit` class. So if we want our `Command` to return nothing, we can specify `Unit` as its type.
+
+Interfaces in Kotlin are more potent than Java (before Java 8) because they can contain code. However, for now, we do not need that feature.
+
+The first command needs to request the forecast to the API and convert it to domain classes. This is the definition of the domain classes:
+
+{title="domain/model/DomainClasses.kt", lang="kotlin"}
+~~~~~~~~
+data class ForecastList(val city: String, val country: String, 
+                        val dailyForecast:List<Forecast>)
+
+data class Forecast(val date: String, val description: String, val high: Int, 
+                    val low: Int)
+~~~~~~~~
+
+These classes will probably need to be reviewed in the future when we add more features. For now, the data they keep is enough.
+
+Classes must be mapped from the data to the domain model, so the next task will be to create a `DataMapper`:
+
+{title="domain/mappers/ForecastDataMapper.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastDataMapper {
+
+    fun convertFromDataModel(forecast: ForecastResult): ForecastList =
+        ForecastList(forecast.city.name, forecast.city.country, 
+            convertForecastListToDomain(forecast.list))
+
+    private fun convertForecastListToDomain(list: List<Forecast>)
+            : List<ModelForecast> {
+        return list.mapIndexed { i, forecast ->
+            val dt = Calendar.getInstance().timeInMillis + 
+                TimeUnit.DAYS.toMillis(i.toLong())
+            convertForecastItemToDomain(forecast.copy(dt = dt)) 
+        }
+    }
+
+    private fun convertForecastItemToDomain(forecast: Forecast): ModelForecast {
+        return ModelForecast(convertDate(forecast.dt), 
+                forecast.weather[0].description, forecast.temp.max.toInt(), 
+                forecast.temp.min.toInt())
+    }
+
+    private fun convertDate(date: Long): String {
+        val df = DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault())
+        return df.format(date)
+    }
+}
+~~~~~~~~
+
+As we are using two classes with the same name, give a specific name to one of them so that we can avoid writing the complete package:
+
+~~~~~~~~
+import com.antonioleiva.weatherapp.domain.model.Forecast as ModelForecast
+~~~~~~~~
+
+Another interesting point about this code is the way to convert the forecast list from the data to the domain model:
+
+~~~~~~~~
+return list.mapIndexed { i, forecast -> ... }
+~~~~~~~~
+
+We can loop over the collection that easily and return a new list with the converted items. Kotlin provides a good set of functional operations over lists, which apply an operation for all the items in a list and transform them in any way. Collection operations are one of the most powerful features in Kotlin for developers used to Java 7. We shall take a look at all the different transformations very soon. It is important to know they exist because it makes it easier to find places where these functions can save much time and boilerplate.
+
+You may have noticed too that I am not using the date, but generating a new one. That is because the request returns a date that is difficult to convert correctly to current date while not having issues with timezone. As we know that the first day we receive is today, we can iterate and build the proper dates this way.
+
+And now, everything is ready to write the command:
+
+{title="domain/commands/RequestForecastCommand.kt", lang="kotlin"}
+~~~~~~~~
+class RequestForecastCommand(private val zipCode: String) :
+        Command<ForecastList> {
+    override fun execute(): ForecastList {
+        val forecastRequest = ForecastRequest(zipCode)
+        return ForecastDataMapper().convertFromDataModel(
+                forecastRequest.execute())
+    }
+}
+~~~~~~~~
+
+## 10.3 Drawing the data in the UI
+
+`MainActivity` code changes a little, because now we have real data to fill the adapter. The asynchronous call needs to be rewritten:
+
+{title="ui/activities/MainActivity.kt", lang="kotlin"}
+~~~~~~~~
+doAsync() {
+    val result = RequestForecastCommand("94043").execute()
+    uiThread {
+        forecastList.adapter = ForecastListAdapter(result)
+    }
+}
+~~~~~~~~
+
+The adapter requires some modifications too:
+
+{title="ui/adapters/ForecastListAdapter.kt", lang="kotlin"}
+~~~~~~~~
+class ForecastListAdapter(private  val weekForecast: ForecastList) : 
+        RecyclerView.Adapter<ForecastListAdapter.ViewHolder>() {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): 
+            ViewHolder? {
+        return ViewHolder(TextView(parent.getContext()))
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, 
+            position: Int) {
+        with(weekForecast.dailyForecast[position]) {
+            holder.textView.text = "$date - $description - $high/$low"
+        }
+    }
+
+    override fun getItemCount(): Int = weekForecast.dailyForecast.size
+
+    class ViewHolder(val textView: TextView) : RecyclerView.ViewHolder(textView)
+}
+~~~~~~~~
+
+I> ### `with` function
+I>
+I>`with` is a useful function included in the standard Kotlin library. It receives an object and an extension function as parameters and makes the object execute the function. That way, all the code that we define inside the brackets acts as an extension function for the object provided in the first parameter, and we can use all its public functions and properties, as well as `this`. The `with` function is helpful to simplify code when we do several operations over the same object.
+
+There is some new code in this chapter, so feel free to check it out on the [repository](https://github.com/antoniolg/Kotlin-for-Android-Developers/tree/chapter-10).

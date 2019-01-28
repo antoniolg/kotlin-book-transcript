@@ -1,0 +1,29 @@
+# 2 Getting ready
+
+Now that you know some little examples of what you may do with Kotlin, I am sure you want to start to put it into practice as soon as possible. Don't worry; these first chapters will help you configure your development environment so that you can start writing some code immediately.
+
+## 2.1 Android Studio
+
+The first thing you need is to install Android Studio. As you may know, Android Studio is the official Android IDE, which was presented to the public in 2013 as a preview and finally released in 2014.
+
+Android Studio is implemented as a plugin for [IntelliJ IDEA](https://www.jetbrains.com/idea), a Java IDE created by [Jetbrains](https://www.jetbrains.com), the company which is also behind Kotlin. So, as you can see, everything is tightly connected.
+
+The adoption of Android Studio was a significant step forward for Android developers. First, because we left the buggy Eclipse behind and moved to a set of tools specially designed for Java developers, which gives us a whole interaction with the language. We enjoy fantastic features such as fast and impressively smart code completion, and powerful analyzing and refactoring tools among others.
+
+And second, [Gradle](https://gradle.org/) became the official build system for Android, which means a whole bunch of new possibilities relating to versioning, building, and deployment. Two of the most exciting functions are build types and flavors, which let you create infinite versions of the app (or even different apps) in a straightforward way while using the same code base.
+
+If you are still using Eclipse, I am afraid you need to switch to Android Studio if you want to follow this book. The Kotlin team is creating a plugin for Eclipse, but it may be far behind the one for Android Studio, and the integration is probably less smooth. You will also discover what you are missing as soon you start using it.
+
+I am not covering the use of Android Studio or Gradle because this is not the focus of the book. But if this is the first time you use these tools, I am sure that you will be able to follow the content and learn the basics in the meanwhile.
+
+Download [Android Studio from the official page](https://developer.android.com/sdk/index.html) if you do not have it already.
+
+## 2.2 Install Kotlin plugin
+
+Since IntelliJ 15 was released, the Kotlin plugin is bundled with the IDE. For Android Studio, it depends on the version you are using.
+
+If you have Android Studio 3.0 or above, you already have everything you need. If your Android Studio is 2.3 or below, you need to install the Kotlin plugin manually.
+
+So go to the plugins section inside *Android Studio Preferences*, and install the Kotlin plugin. Use the search tool if you cannot find it.
+
+Now our environment is ready to understand the language, compile it and execute it just as seamlessly as if we were using Java.

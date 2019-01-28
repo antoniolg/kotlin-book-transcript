@@ -1,0 +1,28 @@
+# III. About the author
+
+Hi! This is Antonio Leiva.
+
+Since the end of 2018, I am self-employed. I spend my time helping Android developers and the companies they work for to transition from Java to Kotlin. By mastering the language, they manage to boost their productivity and create more robust and maintainable software.
+
+I am really thankful for having had the opportunity to help thousands of people with my content, which goes from my regular posts in my blog antonioleiva.com to this book you currently have in your hands.
+
+I also became a **Kotlin Certified Training by JetBrains**, so I am proud to offer certified training, which you or your company can participate in. I have both online and live training. If you are interested in any of them, please write me to [contact@antonioleiva.com](mailto:contact@antonioleiva.com). As a valued customer, I can offer you huge discounts on the [online training](https://antonioleiva.com/online-course/).
+
+If you want to know a little about me, I live in Madrid, Spain. I've been working as a software developer for more than 10 years. I started as a CRM consultant, but at some point, I found Android and quickly fell in love. Since that, I moved from my first company to another one called Gigigo, a Spanish brand that built third-party Apps.
+
+Finally, I had the chance to join [Plex](https://plex.tv) and start working remotely. It was a vast and challenging experience as an Android developer that helped me learn a lot of how a software company works.
+
+But in the meanwhile, the success of this book made me realize that there was a considerable need wanting to be covered, so I started running my own business. When our baby was born, my spare time was highly reduced, so I had to make a decision. That led me to focus 100% on helping other Android developers boost their careers.
+
+On my free time, I just like enjoying all the little moments I can with my family. I also love cooking, especially since I became vegan and had to reinvent the way I eat every day. And of course, I enjoy new technologies and staying up to date as much as I can in this sector.
+
+If you want to keep in contact and know more about my day-to-day, you can follow me on my different places:
+
+- Blog:  [antonioleiva.com](http://antonioleiva.com)
+- Twitter: [@lime_cl](https://twitter.com/lime_cl)
+- Instagram: [antonioleivag](https://www.instagram.com/antonioleivag/)
+- Facebook Group: [Kotlin for Android Developers](https://www.facebook.com/groups/kotlinandroiddev/)
+- YouTube Channel: [Tutorials & Interviews](https://www.youtube.com/c/antonioleivacom)
+- LinkedIn: [antoniolg](https://www.linkedin.com/in/antoniolg/)
+
+I hope you enjoy this book!

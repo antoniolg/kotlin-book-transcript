@@ -61,7 +61,7 @@ Remember you need to add the Gson library to `build.gradle` dependencies:
 
 {title="app/build.gradle", lang="groovy"}
 ~~~~~~~~
-compile "com.google.code.gson:gson:2.8.1"
+compile "com.google.code.gson:gson:2.8.5"
 ~~~~~~~~
 
 ## 10.2 Shaping the domain layer

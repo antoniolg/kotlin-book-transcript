@@ -221,7 +221,7 @@ import kotlinx.android.synthetic.main.activity_detail.*
 ...
 
 private fun bindForecast(forecast: Forecast) = with(forecast) {
-    Picasso.with(ctx).load(iconUrl).into(icon)
+    Picasso.with(this@DetailActivity).load(iconUrl).into(icon)
     supportActionBar?.subtitle = date.toDateString(DateFormat.FULL)
     weatherDescription.text = description
     bindWeather(high to maxTemperature, low to minTemperature)

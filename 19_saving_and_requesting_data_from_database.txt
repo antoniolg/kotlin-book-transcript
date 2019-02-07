@@ -253,7 +253,7 @@ Inside the block, we can use `dailyForecast` and `map` without the need of refer
 {title="extensions/CollectionExtensions.kt", lang="kotlin"}
 ~~~~~~~~
 fun <K, V : Any> MutableMap<K, V?>.toVarargArray(): 
-    Array<out Pair<K, V>> =  map({ Pair(it.key, it.value!!) }).toTypedArray()
+    Array<out Pair<K, V>> =  map { Pair(it.key, it.value!!) }.toTypedArray()
 ~~~~~~~~
 
 It works over a `Map` with nullable values (this was a condition from the map delegate) and converts it to an `Array` with non-nullable values (`select` function requisite) of pairs. Another complex one you do not need to understand yet. I will be covering nullity soon.

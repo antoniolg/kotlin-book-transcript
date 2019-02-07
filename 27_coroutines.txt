@@ -1,202 +1,535 @@
-# 27 A first walk into coroutines
+# 27 Coroutines since Kotlin 1.3
 
-Coroutines were the most significant introduction to Kotlin 1.1. They are great because of how powerful they are, and the community is still finding out how to take the most out of them.
+Coroutines are one of the most exciting features in Kotlin. With them, you can simplify the work of asynchronous tasks in an impressive way, and make the code much more readable and easy to understand.
 
-To put it simply, coroutines are a way to write asynchronous code sequentially. Instead of messing around with callbacks, you can write your lines of code one after the other. Some of them can suspend the execution and wait until the result is available.
+With coroutines, you can write asynchronous code, which was traditionally written using the Callback pattern, using synchronous style. The return value of a function will provide the result of the asynchronous call.
 
-If you were a former C# developer, async/await is the closest concept. However, coroutines in Kotlin are more powerful, because instead of being a specific implementation of the idea, they are a language feature that developers can implement in different ways to solve specific problems.
+How's this magic happening? We'll see it in a minute. But first, let's understand why coroutines are necessary.
 
-You can write your solution, or use one of the several options that the Kotlin team and other independent developers have built.
+Coroutines have been with us since Kotlin 1.1 as an experimental feature. But Kotlin 1.3 released the final API, and now they are production ready.
 
-You need to understand that coroutines are an experimental feature in Kotlin 1.1. The Kotlin team uses this category for features that they want to release early but might change in the future.  In the case of coroutines, they plan to support the current API, but you might want to migrate to the new definition. As we will see later, you need to opt in for this feature. Otherwise, the IDE shows a warning when you use it.
+## 27.1 Coroutines goal: The problem
 
-But this also means that you should take this chapter as an example of what you can do, not a rule of thumb. Things may change in the next few months.
+Imagine that you have a login screen where the user enters a user name, a password, and clicks login.
 
-## 27.1 Understanding how coroutines work
+Your app, under the hood, needs to do a server request to validate the login, and another call to recover a list of friends to show it on the screen.
 
-My goal here is that you can get some basic concepts and use one of the existing libraries, not to build your implementations. But I think it is important to understand some of the internals so that you do not blindly use what you are given.
-
-Coroutines are based on the idea of *suspending functions*: functions that can stop the execution when they are called and make it continue once it has finished running their background task.
-
-Suspending functions are marked with the reserved word `suspend`, and can only be called inside other suspending functions or a coroutine.
-
-Thus, you cannot call a suspending function everywhere. There needs to be a surrounding function that builds the coroutine and provides the required context. Something like this:
+The code in Kotlin could be something like this:
 
 ~~~~~~~~
-fun <T> async(block: suspend () -> T)
+progress.visibility = View.VISIBLE
+ 
+userService.doLoginAsync(username, password) { user ->
+ 
+    userService.requestCurrentFriendsAsync(user) { friends ->
+ 
+        val finalUser = user.copy(friends = friends)
+        toast("User ${finalUser.name} has ${finalUser.friends.size} friends")
+ 
+        progress.visibility = View.GONE
+    }
+ 
+}
 ~~~~~~~~
 
-I am not explaining how to implement the above function. It is a complicated process that is out of the scope of this book, and for most cases, there are solutions already implemented for you. If you are interested in building your own, you can read the specification written in [coroutines Github](https://github.com/Kotlin/kotlin-coroutines/blob/master/kotlin-coroutines-informal.md). What you need to know is that the function can have whatever name you want to give it and that it has at least a suspending block as a parameter.
+The steps would be:
 
-Then you could implement a suspending function and call it inside that block:
+1. It shows the progress
+2. It sends a request to the server to validate the login
+3. Then with the result, it does another request to recover the friends' list
+4. Finally, it hides the progress again
+
+But things can get worse. Imagine that the API is not the best (I am sure you have been there), and you have to get another set of friends: the suggested friends. Then you need to merge them into a unique list.
+
+You have two options here:
+
+1. Do the second friends request after the first one, which is the simplest way but also not very efficient. The second request does not need the result from the first one
+2. Run both requests at the same time and find a way to synchronize the callback results. This is pretty complex.
+
+In a real App, a lazy (and pragmatic) programmer would probably choose the first one:
 
 ~~~~~~~~
-suspend fun mySuspendingFun(x: Int) : Result {
+progress.visibility = View.VISIBLE
+
+userService.doLoginAsync(username, password) { user ->
+
+    userService.requestCurrentFriendsAsync(user) { currentFriends ->
+
+        userService.requestSuggestedFriendsAsync(user) { suggestedFriends ->
+            val finalUser = user.copy(friends = currentFriends + suggestedFriends)
+            toast("User ${finalUser.name} has ${finalUser.friends.size} friends")
+
+            progress.visibility = View.GONE
+        }
+
+    }
+
+}
+~~~~~~~~
+
+The code starts becoming difficult to understand, and we see the feared callback hell: the next call is done inside the previous callback, so the indentation keeps growing and growing.
+
+Thanks to Kotlin lambdas, it doesn't look too bad. But who knows if, in the future, you will need to add another request that makes this even more unmanageable.
+
+Besides, remember that we took the easy path, which is also not very time effective.
+
+## 27.2 What are coroutines?
+
+In order to understand the coroutines easily, let's say that coroutines are like threads, but better.
+
+First, because coroutines let you write your asynchronous code sequentially, dramatically reducing the cognitive load.
+
+And second, because they are much more efficient. Several coroutines can be run using the same thread. So while the number of threads that you can run in an App is pretty limited, you can run as many coroutines as you need. The limit is almost infinite.
+
+Coroutines are based on the idea of suspending functions. These are functions that can stop the execution of a coroutine at any point and then get the control back to the coroutine once the result is ready and the function has finished doing its work.
+
+So coroutines are basically a safe place where suspending functions will not (normally) block the current thread. And I say normally because it depends on how we define them. We will see all this later.
+
+~~~~~~~~
+coroutine {
+    progress.visibility = View.VISIBLE
+
+    val user = suspended { userService.doLogin(username, password) }
+    val currentFriends = suspended { userService.requestCurrentFriends(user) }
+
+    val finalUser = user.copy(friends = currentFriends)
+    toast("User ${finalUser.name} has ${finalUser.friends.size} friends")
+
+    progress.visibility = View.GONE
+}
+~~~~~~~~
+
+So in the example above, we have a common structure for a coroutine. We will have a coroutine builder, and a set of suspending functions that will suspend the execution of the coroutine until they have the result.
+
+Then, you can use the result in the following line. Pretty much like sequential code. These two artifacts are the key, but take into account that `coroutine` and `suspended` do not exist with those names, they are there just so that you can see the structure without having to understand more complex concepts. We will see all those in a minute.
+
+### Suspending functions
+
+Suspending functions have the ability to block the execution of the coroutine while they are doing their work. Once they finish, the result of the operation is returned and can be used in the next line.
+
+~~~~~~~~
+val user = suspended { userService.doLogin(username, password) }
+val currentFriends = suspended { userService.requestCurrentFriends(user) }
+~~~~~~~~
+
+Suspending functions can run on the same or a different thread. It depends on how everything is set up. Suspending functions can only run inside a coroutine or inside another suspending function.
+
+To declare your own suspending function, you just need to use the `suspend` reserved word:
+
+~~~~~~~~
+suspend fun suspendingFunction() : Int  {
+    // Long running task
+    return 0
+}
+~~~~~~~~
+
+Getting back to the original example, a question you may be asking is where all this code is executed. Let's focus on just one line:
+
+~~~~~~~~
+coroutine {
+    progress.visibility = View.VISIBLE
+    ...
+}
+~~~~~~~~
+
+Where do you think that this line will be run? Are you sure that it will be the UI thread? If it's not, your App will crash, so it is an important question.
+
+And the answer is that it depends: it depends on the coroutine context.
+
+### Coroutine context
+
+The coroutine context is a set of rules and configurations that define how the coroutine will be executed. Under the hood, it's a kind of map, with a set of possible keys and values.
+
+For now, it's just enough for you to know that one of the possible configurations is the dispatcher that is used to identify the thread where the coroutine will be executed.
+
+This dispatcher can be provided in two ways:
+
+- Explicitly: we manually set the dispatcher that will be used
+- By the coroutine scope: let's forget about scopes for now, but this would be the second option
+
+To do it explicitly, the coroutine builder receives a coroutine context as a first parameter. So there, we can specify the dispatcher that will be used. Dispatchers implement CoroutineContext, so it can be used there:
+
+~~~~~~~~
+coroutine(Dispatchers.Main) {
+    progress.visibility = View.VISIBLE
+    ...
+}
+~~~~~~~~
+
+Now, the line that changes the visibility is executed in the UI thread. That one, and everything inside that coroutine. But what happens to the suspending functions?
+
+~~~~~~~~
+coroutine {
+    ...
+    val user = suspended { userService.doLogin(username, password) }
+    val currentFriends = suspended { userService.requestCurrentFriends(user) }
+    ...
+}
+~~~~~~~~
+
+Are those requests also run on the main thread? If that's the case, they will block it, so we would have a problem. The answer, again, it's that it depends.
+
+Suspending functions have different ways to define the dispatcher that will be used. A very helpful function that the coroutines library provides is `withContext`.
+
+### withContext
+
+This is a function that allows to easily change the context that will be used to run a part of the code inside a coroutine. This is a suspending function, so it means that it'll suspend the coroutine until the code inside is executed, no matter the dispatcher that it's used.
+
+With that, we can make our suspending functions use a different thread:
+
+~~~~~~~~
+suspend fun suspendLogin(username: String, password: String) =
+        withContext(Dispatchers.Main) {
+            userService.doLogin(username, password)
+        }
+~~~~~~~~
+
+The code above would still keep using the main thread, so it would block the UI, but that can be easily changed by specifying a different dispatcher:
+
+~~~~~~~~
+suspend fun suspendLogin(username: String, password: String) =
+        withContext(Dispatchers.IO) {
+            userService.doLogin(username, password)
+        }
+~~~~~~~~
+
+Now, by using the IO dispatcher, we use a background thread to do it. `withContext` is a suspending function itself, so we don't need to use it inside another suspending function. Instead, we can do:
+
+~~~~~~~~
+val user = withContext(Dispatchers.IO) { userService.doLogin(username, password) }
+val currentFriends = withContext(Dispatchers.IO) { 
+        userService.requestCurrentFriends(user) 
+ }
+~~~~~~~~
+
+You may be wondering what dispatchers we have and when to use them. So let's clarify that now!
+
+### Dispatchers
+
+As we saw, dispatchers are coroutine contexts that specify the thread or threads that can be used by the coroutine to run its code. There are dispatchers that just use one thread (like Main) and others that define a pool of threads that will be optimized to run all the coroutines they receive.
+
+If you remember, at the beginning we told that 1 thread can run many coroutines, so the system won't create 1 thread per coroutine, but will try to reuse the ones that are already alive.
+
+We have four main dispatchers:
+
+- Default: It will be used when no dispatcher is defined, but we can set it explicitly too. This dispatcher is used to run tasks that make intensive use of the CPU, mainly App computations, algorithms, etc. It can use as many threads as CPU cores. As these are intensive tasks, it doesn't make sense to have more running at the same time, because the CPU will be busy
+- IO: You will use this one to run input/output operations. In general, all tasks that will block the thread while waiting for an answer from another system: server requests, access to database, files, sensors… As they don't use the CPU, you can have many running at the same time, so the size of this thread pool is 64. Android Apps are all about interaction with the device and network requests, so you probably will use this one most of the time.
+- Unconfined: if you don't care much what thread is used, you can use this one. It's difficult to predict what thread will be used, so don't use it unless you're very sure of what you're doing
+- Main: this is a special dispatcher that is included in UI related coroutine libraries. In particular, in the Android one, it will use the UI thread.
+
+You have now the power to control the elements, use it wisely 🙂
+
+### Coroutine Builders
+
+Now that you're able to change the execution thread in a breeze, you need to learn how to run a new coroutine. To do that, you'll use the coroutine builders.
+
+We have different builders depending on what we want to do, and you could technically write your own. But for most cases, the ones that the library provides are more than enough. Let's see them:
+
+#### runBlocking
+
+This builder blocks the current thread until all the tasks inside that coroutine are finished. That goes against what we want to achieve with coroutines. So what's the use then?
+
+`runBlocking` is very helpful to test suspending tasks. In your tests, wrap the suspending task you want to test with a `runBlocking` call, and you will be able to assert the result and prevent that the test finishes before the background task ends.
+
+~~~~~~~~
+fun testSuspendingFunction() = runBlocking {
+    val res = suspendingTask1()
+    assertEquals(0, res)
+}
+~~~~~~~~
+
+But that's it. You probably won't use `runBlocking` for much more than that.
+
+#### launch
+This is the main builder. You'll use it a lot because it's the simplest way to create coroutines. As opposed to `runBlocking`, it won't block the current thread (if we use the proper dispatchers, of course).
+
+This builder always needs a scope. We'll see scopes in the next section, but for now, let's just use the `GlobalScope`:
+
+~~~~~~~~
+GlobalScope.launch(Dispatchers.Main) {
+    ...
+}
+~~~~~~~~
+
+`launch` returns a `Job`, which is another class that implements `CoroutineContext`.
+
+Jobs have a couple of interesting functions that can be very helpful. But it's important to know that a job can have a parent job. That parent job have some control over their children, and that's where these functions come into play:
+
+##### job.join
+
+With this function, you can block the coroutine associated with that job until all the child jobs are finished. All the suspending functions that are called inside that coroutine are tied to this job, so when the job can find out when all those child jobs finish and then continue the execution.
+
+~~~~~~~~
+val job = GlobalScope.launch(Dispatchers.Main) {
+
+    doCoroutineTask()
+
+    val res1 = suspendingTask1()
+    val res2 = suspendingTask2()
+
+    process(res1, res2)
+
+}
+
+job.join()
+~~~~~~~~
+
+`job.join()` is a suspending function itself, so it needs to be called inside another coroutine.
+
+##### job.cancel
+This function will cancel all its associated child jobs. So if, for instance, the `suspendingTask1()` is running when `cancel()` is called, this won't return the value to `res1` and `suspendingTask2()` will never be executed:
+
+~~~~~~~~
+val job = GlobalScope.launch(Dispatchers.Main) {
+
+    doCoroutineTask()
+
+    val res1 = suspendingTask1()
+    val res2 = suspendingTask2()
+
+    process(res1, res2)
+
+}
+
+job.cancel()
+~~~~~~~~
+
+`job.cancel()` is a regular function, so it doesn't require a coroutine to be called.
+
+#### async
+
+We have this other builder that you will see now that it's going to fix the second important problem we had in the original example.
+
+`async` allows running several background tasks in parallel. It's not a suspending function itself, so when we run `async` the background process starts, but it immediately continues running the next line. `async` always needs to be called inside another coroutine, and it returns a specialized job that is called `Deferred`.
+
+This object has a new function called `await()`, which is the blocking one. We'll call `await()` only when we need the result. If the result is not ready yet, the coroutine is suspended at that point. If we had the result already, it'll just return it and continue. This way, you can run as many background tasks as you need.
+
+So in the example below, the first request is required to do the other two. But both friend requests can be done in parallel. Using `withContext` we are wasting a precious time:
+
+~~~~~~~~
+GlobalScope.launch(Dispatchers.Main) {
+
+    val user = withContext(Dispatchers.IO) { userService.doLogin(username, password) }
+    val currentFriends = 
+            withContext(Dispatchers.IO) { userService.requestCurrentFriends(user) }
+    val suggestedFriends = 
+            withContext(Dispatchers.IO) { userService.requestSuggestedFriends(user) }
+
+    val finalUser = user.copy(friends = currentFriends + suggestedFriends)
+}
+~~~~~~~~
+
+If we imagine that each request takes 2 seconds, this would be taking 6 seconds (aprox) to finish. If we substitute that with `async`:
+
+~~~~~~~~
+GlobalScope.launch(Dispatchers.Main) {
+
+    val user = withContext(Dispatchers.IO) { userService.doLogin(username, password) }
+    val currentFriends = async(Dispatchers.IO) { userService.requestCurrentFriends(user) }
+    val suggestedFriends = 
+            async(Dispatchers.IO) { userService.requestSuggestedFriends(user) }
+
+    val finalUser = user.copy(friends = currentFriends.await() + suggestedFriends.await())
+
+}
+~~~~~~~~
+
+The second and the third tasks run in parallel, so they would (ideally) run at the same time, and the time would be reduced to 4 seconds.
+
+Besides, synchronizing both results is trivial. Just call await on both and let the coroutines framework do the rest.
+
+### Scopes
+
+So far we have a pretty decent code doing quite complex operations in a very simple way. But we still have a problem.
+
+Imagine that we want to show these friends list in a `RecyclerView`, but while we are running one of the background tasks, the user decides to close the activity. The activity will now be in `isFinishing` state, so any UI update will throw an exception.
+
+How can we solve this situation? With scopes. Let's see the different scopes we have:
+
+#### Global scope
+It's a general scope that can be used for any coroutines that are meant to continue executing while the App is running. So they shouldn't be tied to any specific components that can be destroyed.
+
+We've used it before, so should be easy now:
+
+~~~~~~~~
+GlobalScope.launch(Dispatchers.Main) {
     ...
 }
 
-async { 
-    val res = mySuspendingFun(20)
-    print(res)
+When you use `GlobalScope`, always ask yourself twice whether this coroutine affects the whole App and not just a specific screen or component.
+
+#### Implement CoroutineScope
+Any classes can implement this interface and become a valid scope. The only thing you need to do is to override the `coroutineContext` property.
+
+Here, there are at least two important things to configure: the dispatcher, and the job.
+
+If you remember, a context can be a combination of other contexts. They just need to be of different type. So here, in general, you will define two things:
+
+- The dispatcher, to identify the default dispatcher that the coroutines will use
+- The job, so that you can cancel all pending coroutines at any moment
+
+~~~~~~~~
+class MainActivity : AppCompatActivity(), CoroutineScope {
+
+    override val coroutineContext: CoroutineContext
+        get() = Dispatchers.Main + job
+
+    private lateinit var job: Job
+
 }
 ~~~~~~~~
 
-Are coroutines threads then? Not exactly. They work similarly, but are much more lightweight and efficient. You can have millions of coroutines running on a few threads, which opens a world of possibilities.
+The `plus(+)` operation is used to combine contexts. If two contexts of different type are concatenated, it will create a `CombinedContext` that will have both configurations.
 
-There are three ways you can make use of the coroutines feature:
+On the other hand, if two of the same type are concatenated, it will use the second one. So for instance: `Dispatchers.Main + Dispatchers.IO == Dispatchers.IO`
 
-- Raw implementation: it means building your way to use coroutines. This is quite complex and usually not required at all.
-- Low-level implementations: Kotlin provides a set of libraries that you can find in [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) repository, which solves some of the hardest parts and provides a specific implementation for different scenarios. There is [one for Android](https://github.com/Kotlin/kotlinx.coroutines/tree/master/ui/kotlinx-coroutines-android), for instance.
-- Higher-level implementations: if you want to have a solution that provides everything you need to start using coroutines right away, there are several libraries out there that do all the hard work for you, and the list keeps growing. I am going to stick to Anko, which provides a solution that works well on Android, and you are already familiar with the library.
-
-## 27.2 Using Anko for coroutines
-
-Since 0.10 version, Anko provides a couple of ways to use coroutines in Android.
-
-The first one is very similar to what we saw in the example above, and also similar to what other libraries do.
-
-First, you need to create an async block where suspension functions can run:
+We create the job as `lateinit` so that we can later initialize it in `onCreate`. It will then be canceled in `onDestroy`.
 
 ~~~~~~~~
-async(UI) {
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    job = Job()
+    ...
+}
+
+override fun onDestroy() {
+    job.cancel()
+    super.onDestroy()
+}
+~~~~~~~~
+
+So now, code gets simpler when using coroutines. You can just use the builder and skip the coroutine context, as it will use the one defined by the scope, which includes the main dispatcher:
+
+~~~~~~~~
+launch {
     ...
 }
 ~~~~~~~~
 
-The UI argument is the execution context for the `async` block.
+Of course, if you're using coroutines on all your activities, it may be worth extracting that code to a parent class.
 
-Then you can create blocks that are executed in a background thread and return the result to the UI thread. Those blocks are defined using the `bg` function:
+### Extra - Convert callbacks to coroutines
 
-~~~~~~~~
-async(UI) {
-    val r1: Deferred<Result> = bg { fetchResult1() }
-    val r2: Deferred<Result> = bg { fetchResult2() }
-    updateUI(r1.await(), r2.await())
-}
-~~~~~~~~
+If you've started thinking of using coroutines in your project, you're probably wondering how you're going to keep your current libraries, which may be making use of callbacks, into your new shiny coroutines.
 
-`bg` returns a `Deferred` object, which suspends the coroutine when the function `await()` is called, just until it returns the result. We will see this option in the example below.
+The thing is that the maintainers probably haven't given support to coroutines yet, so mixing coroutines with callbacks may be a bit awful. Luckily, there's an easy way to do it.
 
-As you know, as Kotlin compiler can infer the type of the variables, this could be simpler:
+Imagine that your library provides a function called `doLoginAsync()`, which receives a callback as a second argument. The coroutines library provides a function called `suspendCancellableCoroutine` that will help you do the job:
 
 ~~~~~~~~
-async(UI) {
-    val r1 = bg { fetchResult1() }
-    val r2 = bg { fetchResult2() }
-    updateUI(r1.await(), r2.await())
-}
+suspend fun suspendAsyncLogin(username: String, password: String): User =
+    suspendCancellableCoroutine { continuation ->
+        userService.doLoginAsync(username, password) { user ->
+            continuation.resume(user)
+        }
+    }
 ~~~~~~~~
 
-The second alternative is to make use of the integration with listeners that is provided on specific sub-libraries, depending on which listener you are going to use. For instance, on `anko-sdk15-coroutines`, there exists an `onClick` listener whose lambda is indeed a coroutine. So you can start using suspending functions right away inside the listener block:
+This function returns a `continuation` object that can be used to return the result of the callback. Just call `continuation.resume`, and that result will be returned by the suspending function to the parent coroutine. It's that easy!
 
-~~~~~~~~
-textView.onClick {
-    val r1 = bg { fetchResult1() }
-    val r2 = bg { fetchResult2() }
-    updateUI(r1.await(), r2.await())
-}
-~~~~~~~~
+Coroutines open up a world of possibilities and simplify executing background tasks in a way that you probably couldn't imagine.
 
-As you can see, the result is very similar to the previous one. You are just saving some code.
-
-To use it, you will need to add some of these dependencies, depending on the listeners you want to use:
-
-{lang="groovy"}
-~~~~~~~~
-compile "org.jetbrains.anko:anko-sdk15-coroutines:$anko_version"
-compile "org.jetbrains.anko:anko-appcompat-v7-coroutines:$anko_version"
-compile "org.jetbrains.anko:anko-design-coroutines:$anko_version"
-~~~~~~~~
+I really recommend you to start using them in your projects. So let's see how to apply it to our current one.
 
 ## 27.3 Using coroutines in our example
 
-Our current example does not have many complex requests, and there is not much value in using coroutines instead of `doAsync`, but I want to show you how to configure your project to start using them. It is pretty straightforward.
+With these concepts already clear, let's modify our example to start using lambdas. We are replacing the usage of  `doAsync` in both activities with a coroutine. 
 
-First, add the dependency to the `build.gradle`:
-
-{title="app/build.gradle", lang="groovy"}
-~~~~~~~~
-compile "org.jetbrains.anko:anko-coroutines:$anko_version"
-~~~~~~~~
-
-Next, if you remember, I told you that you need to opt in for the feature. Otherwise, it will show a warning. To do that, simply add to the module`build.gradle`:
+Add the required dependency:
 
 {title="app/build.gradle", lang="groovy"}
 ~~~~~~~~
-kotlin {
-    experimental {
-        coroutines "enable"
+implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.1.0'
+~~~~~~~~
+
+To do that, first you need to create a scope. To reuse the configuration, create a parent class that deals with the scope, this way:
+
+{title="activities/CoroutineScopeActivity", lang="kotlin"}
+~~~~~~~~
+abstract class CoroutineScopeActivity : AppCompatActivity(), CoroutineScope {
+
+    override val coroutineContext: CoroutineContext
+        get() = Dispatchers.Main + job
+
+    lateinit var job: Job
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        job = Job()
+    }
+
+    override fun onDestroy() {
+        job.cancel()
+        super.onDestroy()
     }
 }
 ~~~~~~~~
 
-Now you are ready to start using coroutines. Let's go first to the detail activity.
+Then make the activities extend this new abstract one:
 
-You can change this code:
-
+{title="activities/MainActivity", lang="kotlin"}
 ~~~~~~~~
-doAsync {
-    val result = RequestDayForecastCommand(intent.getLongExtra(ID, -1)).execute()
-    uiThread { bindForecast(result) }
+class MainActivity : CoroutineScopeActivity(), ToolbarManager {
+    ...
 }
 ~~~~~~~~
 
-with this one:
+With that, we can now use the coroutine builders as we saw in the section above:
 
-{title="ui/activities/DetailActivity.kt", lang="kotlin"}
+{title="activities/MainActivity", lang="kotlin"}
 ~~~~~~~~
-async(UI) {
-    val result = bg { RequestDayForecastCommand(intent.getLongExtra(ID, -1))
-        .execute() }
-    bindForecast(result.await())
+private fun loadForecast() = launch {
+    val result = withContext(Dispatchers.IO) { RequestForecastCommand(zipCode).execute() }
+    val adapter = ForecastListAdapter(result) { ... }
+    forecastList.adapter = adapter
+    toolbarTitle = "${result.city} (${result.country})"
 }
 ~~~~~~~~
 
-The forecast is requested in a background thread thanks to the `bg` function, which returns a deferred result. That result is awaited in the `bindForecast` call until it is ready to be returned.
+As you see, the `RequestForecastCommand`, which is executed in a background thread by `Dispatchers.IO`, returns the result that can then be used by the following lines.
 
-Though there is a problem here. Coroutines have a problem: they are keeping a reference to `DetailActivity`, leaking it if the request never finishes for instance.
+You can even simplify this a bit more if you convert `execute()` to a suspending function:
 
-No worries, because Anko has a solution. You can create a weak reference to your activity, and use that one instead:
-
+{title="domain/commands/Command", lang="kotlin"}
 ~~~~~~~~
-val ref = asReference()
-val id = intent.getLongExtra(ID, -1)
-
-async(UI) {
-    val result = bg { RequestDayForecastCommand(id).execute() }
-    ref().bindForecast(result.await())
+interface Command<out T> {
+    suspend fun execute(): T
 }
 ~~~~~~~~
 
-This reference allows calling the activity when it is available and cancels the coroutine in case the activity has been killed. Be careful to ensure that all calls to activity methods or properties are done via this `ref` object.
-
-But this can get a little complicated if the coroutine interacts several times with the activity. In `MainActivity`, for instance, this solution becomes a little more convoluted:
-
+{title="domain/commands/RequestForecastCommand", lang="kotlin"}
 ~~~~~~~~
-private fun loadForecast() {
-
-    val ref = asReference()
-    val localZipCode = zipCode
-
-    async(UI) {
-        val result = bg { RequestForecastCommand(localZipCode).execute() }
-        val weekForecast = result.await()
-        ref().updateUI(weekForecast)
-    }
+override suspend fun execute() = withContext(Dispatchers.IO) {
+    forecastProvider.requestByZipCode(zipCode, DAYS)
 }
 ~~~~~~~~
 
-You cannot use `ref()` inside the `bg` block because the code inside that block is not a suspension context, so you need to save the `zipCode` into another local variable.
+That prevents from requiring to write `withContext` inside the coroutine, and forces to use this command in a worker thread:
 
-I honestly think that leaking the activity for 1-2 seconds is not that bad, and probably will not be worth the boilerplate. In fact, we were already leaking it with the previous solution. So if you can ensure that your background process is not taking forever (for instance, by setting a timeout to your server requests), you are safe by not using `asReference()`.
-
-This way, the changes to `MainActivity` would be simpler:
-
-{title="ui/activities/MainActivity.kt", lang="kotlin"}
+{title="activities/MainActivity", lang="kotlin"}
 ~~~~~~~~
-private fun loadForecast() = async(UI) {
-    val result = bg { RequestForecastCommand(zipCode).execute() }
-    updateUI(result.await())
+private fun loadForecast() = launch {
+    val result = RequestForecastCommand(zipCode).execute()
+    val adapter = ForecastListAdapter(result) { ... }
+    ...
+}
+~~~~~~~~
+
+ You can do the same with the `DetailActivity`:
+
+{title="domain/commands/RequestDayForecastCommand", lang="kotlin"}
+~~~~~~~~
+override suspend fun execute() = withContext(Dispatchers.IO) {
+    forecastProvider.requestForecast(id)
+}
+~~~~~~~~
+
+{title="activities/DetailActivity", lang="kotlin"}
+~~~~~~~~
+launch {
+    val id = intent.getLongExtra(ID, -1)
+    val result = RequestDayForecastCommand(id).execute()
+    bindForecast(result)
 }
 ~~~~~~~~
 

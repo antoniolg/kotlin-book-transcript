@@ -73,7 +73,7 @@ If you are used to testing your apps in Java, you will see there is not much dif
 ~~~~~~~~
 buildscript {
     ...
-    ext.mockito_version = '2.16.0'
+    ext.mockito_version = '2.23.4'
 }
 ~~~~~~~~
 
@@ -181,14 +181,16 @@ class RequestDayForecastCommandTest {
         val forecastProvider = mock(ForecastProvider::class.java)
         val command = RequestDayForecastCommand(2, forecastProvider)
 
-        command.execute()
+        runBlocking { command.execute() }
 
         verify(forecastProvider).requestForecast(2)
     }
 }
 ~~~~~~~~
 
-If you run this test, you will find that it fails:
+Remember that as `command.execute()` is a suspending function, it must be called in a coroutine context. Here's where the `runBlocking` builder comes in very handy.
+
+But if you run this test, you will find that it fails:
 
 {lang="text"}
 ~~~~~~~~
@@ -236,12 +238,12 @@ Once you have configured the runner, it is time to add the rest of the dependenc
 ~~~~~~~~
 buildscript {
     ...
-    ext.test_support_version = '1.0.1'
-    ext.espresso_version = '3.0.1'
+    ext.test_support_version = '1.0.2'
+    ext.espresso_version = '3.0.2'
 }
 ~~~~~~~~
 
-{title="app/build.gradle", lang="groovy"}
+{title="app/build.gradle", lang="groovy"}f
 ~~~~~~~~
 dependencies {
     ...
